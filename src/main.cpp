@@ -5,6 +5,8 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <map>
+#include <utility>
 #include "Eigen-3.3/Eigen/Dense"
 #include "json.hpp"
 
@@ -12,6 +14,8 @@ using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
+using std::map;
+using std::pair;
 using json = nlohmann::json;
 
 constexpr double pi() { return M_PI; }
@@ -126,8 +130,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
  ***************************************************************************************************************
  */
 
-// Calculates the coefficients of a jerk-minimizing transition 
-// and then calculates the points along the path
+// Calculates the coefficients of a jerk-minimizing transition and then calculates the points along the path
 vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time)
 {
     // Load matrix, vector and compute coefficients
@@ -176,9 +179,35 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
 }
 
 
+// Converts an enumerated lane to an absolute measure in terms of Frenet d coordinate (lanes being counting numbers)
+double convertLaneToD(int lane)
+{
+    return 2.0 + 4.0 * (double)(lane - 1);
+}
 
+// Cost of a change of lane to the left
+double costOfLaneChangeLeft()
+{
 
+}
 
+// Cost of a change of lane to the right
+double costOfLaneChangeRight()
+{
+
+}
+
+// Cost of maintaining straight course
+double costOfStraightCourse()
+{
+
+}
+
+// Cost of increasing speed to speed limit
+double costOfAcceleratingToSpeedLimit()
+{
+
+}
 
 
 
@@ -244,12 +273,15 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
-
                     /* TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
                      ****************************************************************************************************
                      */
                   
-                    // Look at sensor fusion data
+                    // Make the whole telemetry package available to the methods above for cost...
+                    auto telemetry_data = j[1];
+
+
+                    // Look at sensor fusion data -- THIS IS JUST MESSING AROUND
                     for (int i=0; i<sensor_fusion.size(); i++)
                     {
                         int id    = sensor_fusion[i][0];
@@ -262,6 +294,17 @@ int main() {
                     }
                   
                     // Choose an action based on the costs of various options
+                    map<string, double> path_options = { {"left", 0.0},
+                                                         {"right", 0.0},
+                                                         {"keep", 0.0},
+                                                         {"limit", 0.0} };
+                    path_options["left"]  = costOfLaneChangeLeft();
+                    path_options["right"] = costOfLaneChangeRight();
+                    path_options["keep"]  = costOfStraightCourse();
+                    path_options["limit"] = costOfAcceleratingToSpeedLimit();
+
+                    // Find lowest cost
+                    
 
 
                     // Choose a start point (where we are now) and an end-point (may be based on costs over ensemble)
@@ -273,9 +316,10 @@ int main() {
                     double end_pos_s   = car_s + 20.0;
                     double end_vel_s   = 0.0;
 
-                    double start_pos_d = 6.0;
+                    double d_pos = convertLaneToD(1);
+                    double start_pos_d = d_pos;
                     double start_vel_d = 0.0;
-                    double end_pos_d   = 6.0;
+                    double end_pos_d   = d_pos;
                     double end_vel_d   = 0.0;
 
                     // Generate path data (Frenet)
