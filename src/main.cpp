@@ -244,9 +244,6 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
-                    vector<double> next_x_vals;
-                    vector<double> next_y_vals;
-
 
                     /* TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
                      ****************************************************************************************************
@@ -266,23 +263,44 @@ int main() {
                   
                     // Choose an action based on the costs of various options
 
+
                     // Choose a start point (where we are now) and an end-point (may be based on costs over ensemble)
 
-                    // Generate path data
-                    next_x_vals = minimum_jerk_path({0.0,0.0,0.0}, {0.0,0.0,0.0}, 1.0);
-                    next_y_vals = minimum_jerk_path({0.0,0.0,0.0}, {1000.0, 0.0, 0.0}, 1.0);
 
+                    // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
+                    double start_pos_s = car_s;
+                    double start_vel_s = 0.0;
+                    double end_pos_s   = car_s + 20.0;
+                    double end_vel_s   = 0.0;
 
-/*
-    double dist_inc = 0.5;
-    for(int i = 0; i < 50; i++)
-    {
-          next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
-          next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
-    }
-*/
+                    double start_pos_d = 6.0;
+                    double start_vel_d = 0.0;
+                    double end_pos_d   = 6.0;
+                    double end_vel_d   = 0.0;
 
+                    // Generate path data (Frenet)
+                    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
+                                                                   {end_pos_s,   end_vel_s,   0.0}, 
+                                                                   1.0);
+                    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
+                                                                   {end_pos_d,   end_vel_d,   0.0}, 
+                                                                   1.0);
 
+                    // Convert back to map coordinates
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+                    for (int i=0; i<next_s_vals.size(); i++)
+                    {
+                        vector<double> xy = getXY(next_s_vals[i],
+                                                  next_d_vals[i],
+                                                  map_waypoints_s,
+                                                  map_waypoints_x,
+                                                  map_waypoints_y);
+                        next_x_vals.push_back(xy[0]);
+                        next_y_vals.push_back(xy[1]);
+                    }
+                    
+                    
 
 
 
