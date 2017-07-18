@@ -5,12 +5,13 @@
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Eigen-3.3/Eigen/Core"
-#include "Eigen-3.3/Eigen/QR"
+#include "Eigen-3.3/Eigen/Dense"
 #include "json.hpp"
 
 using namespace std;
-
+using Eigen::MatrixXd;
+using Eigen::VectorXd;
+using std::vector;
 using json = nlohmann::json;
 
 constexpr double pi() { return M_PI; }
@@ -118,7 +119,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
     double perp_heading = heading - pi() / 2;
     double x            = seg_x + d * cos(perp_heading);
     double y            = seg_y + d * sin(perp_heading);
-    return {x,y};
+    return {x, y};
 }
 
 /*
@@ -127,10 +128,53 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 
 // Calculates the coefficients of a jerk-minimizing transition 
 // and then calculates the points along the path
-vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double t)
+vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time)
 {
+    // Load matrix, vector and compute coefficients
+    MatrixXd A = MatrixXd(3,3);
+    VectorXd b = VectorXd(3);
+    VectorXd x = VectorXd(3);
 
+    double t  = max_time;
+    double t2 = t * t;
+    double t3 = t * t2;
+    double t4 = t * t3;
+    double t5 = t * t4;
+
+    A <<   t3,    t4,    t5,
+         3*t2,  4*t3,  5*t4,
+         6*t,  12*t2, 20*t3;
+
+    b << end[0] - (start[0] + start[1] * t + 0.5 * start[2] * t2),
+         end[1] - (start[1] + start[2] * t),
+         end[2] - start[2];
+
+    x = A.inverse() * b;
+
+    double a0 = start[0];
+    double a1 = start[1];
+    double a2 = start[2] / 2.0;
+    double a3 = x[0];
+    double a4 = x[1];
+    double a5 = x[2];
+
+    // Iterate on time and produce path result
+    vector<double> result;
+
+    for (double t=0.0; t<max_time; t+=0.02)
+    {
+        double t2 = t * t;
+        double t3 = t * t2;
+        double t4 = t * t3;
+        double t5 = t * t4;
+    
+        double r = a0 + a1*t + a2*t2 + a3*t3 + a4*t4 + a5*t5;
+        result.push_back(r);
+    }
+
+    return result;
 }
+
 
 
 
@@ -199,24 +243,51 @@ int main() {
                     double end_path_s    = j[1]["end_path_s"];
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
-                    json msgJson;
 
                     vector<double> next_x_vals;
                     vector<double> next_y_vals;
+
 
                     /* TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
                      ****************************************************************************************************
                      */
                   
                     // Look at sensor fusion data
+                    for (int i=0; i<sensor_fusion.size(); i++)
+                    {
+                        int id    = sensor_fusion[i][0];
+                        double x  = sensor_fusion[i][1];
+                        double y  = sensor_fusion[i][2];
+                        double vx = sensor_fusion[i][3];
+                        double vy = sensor_fusion[i][4];
+                        double s  = sensor_fusion[i][5];
+                        double d  = sensor_fusion[i][6];
+                    }
                   
                     // Choose an action based on the costs of various options
 
                     // Choose a start point (where we are now) and an end-point (may be based on costs over ensemble)
 
                     // Generate path data
+                    next_x_vals = minimum_jerk_path({0.0,0.0,0.0}, {0.0,0.0,0.0}, 1.0);
+                    next_y_vals = minimum_jerk_path({0.0,0.0,0.0}, {1000.0, 0.0, 0.0}, 1.0);
+
+
+/*
+    double dist_inc = 0.5;
+    for(int i = 0; i < 50; i++)
+    {
+          next_x_vals.push_back(car_x+(dist_inc*i)*cos(deg2rad(car_yaw)));
+          next_y_vals.push_back(car_y+(dist_inc*i)*sin(deg2rad(car_yaw)));
+    }
+*/
+
+
+
+
 
                     // Send to the simulator
+                    json msgJson;
                     msgJson["next_x"] = next_x_vals;
                     msgJson["next_y"] = next_y_vals;
 
@@ -226,6 +297,8 @@ int main() {
 
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+
+                    //this_thread::sleep_for(chrono::milliseconds(1000));
                 }
             } 
             else 
@@ -248,19 +321,6 @@ int main() {
             res->end(nullptr, 0);
         }
     });
-
-/*
-    h.onConnection([&h](uWS::WebSocket<uWS::SERVER> ws, uWS::HttpRequest req) 
-    {
-        std::cout << "Connected!!!" << std::endl;
-    });
-
-    h.onDisconnection([&h](uWS::WebSocket<uWS::SERVER> ws, int code, char *message, size_t length) 
-    {
-        ws.close();
-        std::cout << "Disconnected" << std::endl;
-    });
-*/
 
     int port = 4567;
     if (h.listen(port)) 
