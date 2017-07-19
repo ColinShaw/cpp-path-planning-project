@@ -9,6 +9,7 @@
 #include <utility>
 #include "Eigen-3.3/Eigen/Dense"
 #include "json.hpp"
+#include "spline.h"
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -325,14 +326,14 @@ int main() {
                     // Generate path data (Frenet)
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   1.2);
+                                                                   1.0);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
                                                                    {end_pos_d,   end_vel_d,   0.0}, 
-                                                                   1.2);
+                                                                   1.0);
 
                     // Convert back to map coordinates
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
+                    vector<double> next_x_pre_vals = {};
+                    vector<double> next_y_pre_vals = {};
                     for (int i=0; i<next_s_vals.size(); i++)
                     {
                         vector<double> xy = getXY(next_s_vals[i],
@@ -340,13 +341,32 @@ int main() {
                                                   map_waypoints_s,
                                                   map_waypoints_x,
                                                   map_waypoints_y);
-                        next_x_vals.push_back(xy[0]);
-                        next_y_vals.push_back(xy[1]);
+                        next_x_pre_vals.push_back(xy[0]);
+                        next_y_pre_vals.push_back(xy[1]);
                     }
-                    
-                    
 
+                    // Use spline interpolator to minimize acceleration at derivative discontinuities
+                    vector<double> time_pre_vals = {};
+                    for (int i=0; i<next_s_vals.size(); i++)
+                    {
+                        time_pre_vals.push_back((double)i / 50.0);
+                    }
 
+                    tk::spline sx;
+                    sx.set_points(time_pre_vals, next_x_pre_vals);
+
+                    tk::spline sy;
+                    sy.set_points(time_pre_vals, next_y_pre_vals);
+                    
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+
+                    for (int i=0; i<next_s_vals.size(); i++)
+                    {
+                        double t = (double)i / 50.0;
+                        next_x_vals.push_back(sx(t));
+                        next_y_vals.push_back(sy(t));
+                    }
 
                     // Send to the simulator
                     json msgJson;
