@@ -313,7 +313,7 @@ int main() {
                     // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
                     double start_pos_s = car_s;
                     double start_vel_s = 0.0;
-                    double end_pos_s   = car_s + 20.0;
+                    double end_pos_s   = car_s + 30.0;
                     double end_vel_s   = 0.0;
 
                     double d_pos = convertLaneToD(1);
@@ -325,10 +325,10 @@ int main() {
                     // Generate path data (Frenet)
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   1.0);
+                                                                   1.2);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
                                                                    {end_pos_d,   end_vel_d,   0.0}, 
-                                                                   1.0);
+                                                                   1.2);
 
                     // Convert back to map coordinates
                     vector<double> next_x_vals = {};
@@ -359,8 +359,6 @@ int main() {
 
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
-                    //this_thread::sleep_for(chrono::milliseconds(1000));
                 }
             } 
             else 
