@@ -19,7 +19,7 @@ using std::map;
 using std::pair;
 using json = nlohmann::json;
 
-constexpr double pi() { return M_PI; }
+constexpr double pi()    { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
 
@@ -186,8 +186,28 @@ double convertLaneToD(int lane)
     return 2.0 + 4.0 * (double)(lane - 1);
 }
 
+// We need a telemetry type encapsulating the data we need for determining course
+struct telemetry_t 
+{
+    double car_s;
+    double car_d;
+    double car_speed;
+    //vector<double> other_cars;    // Need to determine what this exactly is
+};
+
+// And a setpoint type for the controls we are returning...
+struct setpoint_t
+{
+    double start_pos_s;
+    double start_vel_s;
+    double end_pos_s;
+    double end_vel_s;
+    double start_pos_d;
+    double end_pos_d;
+};
+
 // Cost of a change of lane to the left
-double costOfLaneChangeLeft()
+double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
     // Iterate over other cars 
 
@@ -200,7 +220,7 @@ double costOfLaneChangeLeft()
 }
 
 // Cost of a change of lane to the right
-double costOfLaneChangeRight()
+double costOfLaneChangeRight(telemetry_t telemetry_data)
 {
     // Iterate over other cars
 
@@ -213,7 +233,7 @@ double costOfLaneChangeRight()
 }
 
 // Cost of maintaining straight course
-double costOfStraightCourse()
+double costOfStraightCourse(telemetry_t telemetry_data)
 {
     // Iterate over other cars
 
@@ -225,8 +245,34 @@ double costOfStraightCourse()
 
 }
 
-// Determine new speed setpoint whilst going on the straight course (supplement to lane change costs)
-double costOfAcceleratingToSpeedLimit()
+// Determine new setpoints whilst going on the left course 
+setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
+{
+    // Iterate over other cars
+
+    // Compute s-axis cost proximity of nearest car in front of us in left lane and determine speed
+
+    // Compare with speed limit
+
+    // Return new setpoints
+
+}
+
+// Determine new setpoints whilst going on the right course 
+setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
+{
+    // Iterate over other cars
+
+    // Compute s-axis cost proximity of nearest car in front of us in right lane and determine speed
+
+    // Compare with speed limit
+
+    // Return new setpoints
+
+}
+
+// Determine new setpoints whilst going on the straight course 
+setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
     // Iterate over other cars
 
@@ -236,7 +282,7 @@ double costOfAcceleratingToSpeedLimit()
 
     // Take min of these, but weighted with distance to the car in front of us
 
-    // Return target speed
+    // Return new setpoints
 
 }
 
@@ -280,6 +326,50 @@ int main() {
         map_waypoints_dy.push_back(d_y);
     }
 
+    // Spline interpolate the map waypoints
+    vector<double> waypoint_spline_t = {};
+
+    int map_waypoints_size = map_waypoints_x.size();
+    for (int i=0; i<map_waypoints_size; i++)
+    {
+        double t = (double)i / (double)map_waypoints_size; 
+        waypoint_spline_t.push_back(t);
+    }
+
+    tk::spline waypoint_spline_x;
+    waypoint_spline_x.set_points(waypoint_spline_t, map_waypoints_x);
+    tk::spline waypoint_spline_y;
+    waypoint_spline_y.set_points(waypoint_spline_t, map_waypoints_y);
+    tk::spline waypoint_spline_s;
+    waypoint_spline_s.set_points(waypoint_spline_t, map_waypoints_s);
+    tk::spline waypoint_spline_dx;
+    waypoint_spline_dx.set_points(waypoint_spline_t, map_waypoints_dx);
+    tk::spline waypoint_spline_dy;
+    waypoint_spline_dy.set_points(waypoint_spline_t, map_waypoints_dy);
+    
+    vector<double> map_waypoints_x_new;
+    vector<double> map_waypoints_y_new;
+    vector<double> map_waypoints_s_new;
+    vector<double> map_waypoints_dx_new;
+    vector<double> map_waypoints_dy_new;
+
+    int new_waypoint_size = 10000;
+    for (int i=0; i<new_waypoint_size; i++)
+    {
+        double t = (double)i / (double)new_waypoint_size;
+        map_waypoints_x_new.push_back(waypoint_spline_x(t));
+        map_waypoints_y_new.push_back(waypoint_spline_y(t));
+        map_waypoints_s_new.push_back(waypoint_spline_s(t));
+        map_waypoints_dx_new.push_back(waypoint_spline_dx(t));
+        map_waypoints_dy_new.push_back(waypoint_spline_dy(t));
+    }
+
+    map_waypoints_x  = map_waypoints_x_new;
+    map_waypoints_y  = map_waypoints_y_new;
+    map_waypoints_s  = map_waypoints_s_new;
+    map_waypoints_dx = map_waypoints_dx_new;
+    map_waypoints_dy = map_waypoints_dy_new;
+
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy]
                 (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
@@ -309,8 +399,7 @@ int main() {
                      */
                   
                     // Make the whole telemetry package available to the methods above for cost...
-                    auto telemetry_data = j[1];
-
+                    telemetry_t telemetry_data = { car_s, car_d, car_speed };
 
                     // Look at sensor fusion data -- THIS IS JUST MESSING AROUND
                     for (int i=0; i<sensor_fusion.size(); i++)
@@ -325,32 +414,34 @@ int main() {
                     }
                   
                     // Find lowest cost action
-                    double left_cost  = costOfLaneChangeLeft();
-                    double keep_cost  = costOfStraightCourse();
-                    double right_cost = costOfLaneChangeRight();
+                    double left_cost  = costOfLaneChangeLeft(telemetry_data);
+                    double keep_cost  = costOfStraightCourse(telemetry_data);
+                    double right_cost = costOfLaneChangeRight(telemetry_data);
 
                     map<double, string> cost_map = { {left_cost,  "left"},
                                                      {keep_cost,  "keep"},
                                                      {right_cost, "right"} };
 
-                       // Sort it, etc.
+                    // Sort to find minimum cost...
 
 
                     string action = "keep";
 
                     // Determine an action based on the chosen action
+                    setpoint_t new_setpoints;
                     if (action == "left")
                     {
-
+                        //new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
                     }
                     else if (action == "keep")
                     {
-
+                        //new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
                     }
                     else if (action == "right")
                     {
-
+                        //new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
                     }
+
 
                     // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
                     double start_pos_s = car_s;
