@@ -354,9 +354,9 @@ int main() {
 
                     // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
                     double start_pos_s = car_s;
-                    double start_vel_s = 0.4;
+                    double start_vel_s = 0.7;
                     double end_pos_s   = car_s + 30.0;
-                    double end_vel_s   = 0.4;
+                    double end_vel_s   = 0.7;
 
                     double d_pos = convertLaneToD(1);
                     double start_pos_d = d_pos;
@@ -368,51 +368,49 @@ int main() {
                     vector<double> next_s_vals_pre = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                        {end_pos_s,   end_vel_s,   0.0}, 
                                                                        1.0,
-                                                                       0.02);
+                                                                       0.2);
                     vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
                                                                        {end_pos_d,   end_vel_d,   0.0}, 
                                                                        1.0,
-                                                                       0.02);
-
-                    // Set up s,d splines
-                    vector<double> time_vals_pre = {};
-
-                    int num_jerk_values = next_s_vals_pre.size();
-                    for (int i=0; i<num_jerk_values; i++)
-                    {
-                        time_vals_pre.push_back((double)i / 50.0);
-                    }
-
-                    tk::spline spline_s;
-                    spline_s.set_points(time_vals_pre, next_s_vals_pre);
-
-                    tk::spline spline_d;
-                    spline_d.set_points(time_vals_pre, next_d_vals_pre);
-                   
-                    // Calculate interpolated spline in s,d 
-                    vector<double> next_s_vals = {};
-                    vector<double> next_d_vals = {};
-
-                    int num_spline_values = num_jerk_values;       
-                    for (int i=0; i<num_spline_values; i++)
-                    {
-                        double t = (double)i / 50.0;
-                        next_s_vals.push_back(spline_s(i));
-                        next_d_vals.push_back(spline_d(t));
-                    }
+                                                                       0.2);
 
                     // Convert back to map coordinates
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
-                    for (int i=0; i<num_spline_values; i++)
+                    vector<double> next_x_vals_pre = {};
+                    vector<double> next_y_vals_pre = {};
+                    int num_jerk_values            = next_s_vals_pre.size(); 
+                    for (int i=0; i<num_jerk_values; i++)
                     {
                         vector<double> xy = getXY(next_s_vals_pre[i],
                                                   next_d_vals_pre[i],
                                                   map_waypoints_s,
                                                   map_waypoints_x,
                                                   map_waypoints_y);
-                        next_x_vals.push_back(xy[0]);
-                        next_y_vals.push_back(xy[1]);
+                        next_x_vals_pre.push_back(xy[0]);
+                        next_y_vals_pre.push_back(xy[1]);
+                    }
+
+                    // Set up x,y splines
+                    vector<double> time_vals_pre = {};
+                    for (int i=0; i<num_jerk_values; i++)
+                    {
+                        time_vals_pre.push_back((double)i / 5.0);
+                    }
+
+                    tk::spline spline_x;
+                    spline_x.set_points(time_vals_pre, next_x_vals_pre);
+
+                    tk::spline spline_y;
+                    spline_y.set_points(time_vals_pre, next_y_vals_pre);
+                   
+                    // Calculate interpolated spline in x,y
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+                    int num_spline_values      = 50;       
+                    for (int i=0; i<num_spline_values; i++)
+                    {
+                        double t = (double)i / 50.0;
+                        next_x_vals.push_back(spline_x(t));
+                        next_y_vals.push_back(spline_y(t));
                     }
 
                     // Send to the simulator
