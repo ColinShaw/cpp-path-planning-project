@@ -132,7 +132,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
  */
 
 // Calculates the coefficients of a jerk-minimizing transition and then calculates the points along the path
-vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time)
+vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time, double time_inc)
 {
     // Load matrix, vector and compute coefficients
     MatrixXd A = MatrixXd(3,3);
@@ -165,7 +165,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     // Iterate on time and produce path result
     vector<double> result;
 
-    for (double t=0.0; t<max_time; t+=0.02)
+    for (double t=0.0; t<max_time; t+=time_inc)
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -189,24 +189,54 @@ double convertLaneToD(int lane)
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft()
 {
+    // Iterate over other cars 
+
+    // Compute s-axis proximity to our car in immediate left lane and assign cost
+
+    // Compute lane appropriateness and assign cost
+
+    // Compute aggregate cost
 
 }
 
 // Cost of a change of lane to the right
 double costOfLaneChangeRight()
 {
+    // Iterate over other cars
+
+    // Compute s-axis proximity to our car in immediate right lane and assign cost
+
+    // Compute lane appropriteness and assign cost
+
+    // Compute aggregate cost
 
 }
 
 // Cost of maintaining straight course
 double costOfStraightCourse()
 {
+    // Iterate over other cars
+
+    // Compute s-axis proximity to our car in front of us and assign cost
+
+    // Compute s-axis proximity to our car behind us and assign cost
+
+    // Compute aggregate cost
 
 }
 
-// Cost of increasing speed to speed limit
+// Determine new speed setpoint whilst going on the straight course (supplement to lane change costs)
 double costOfAcceleratingToSpeedLimit()
 {
+    // Iterate over other cars
+
+    // Compute s-axis cost proximity of nearest car in front of us and determine speed
+
+    // Compare with speed limit
+
+    // Take min of these, but weighted with distance to the car in front of us
+
+    // Return target speed
 
 }
 
@@ -294,28 +324,39 @@ int main() {
                         double d  = sensor_fusion[i][6];
                     }
                   
-                    // Choose an action based on the costs of various options
-                    map<string, double> path_options = { {"left", 0.0},
-                                                         {"right", 0.0},
-                                                         {"keep", 0.0},
-                                                         {"limit", 0.0} };
-                    path_options["left"]  = costOfLaneChangeLeft();
-                    path_options["right"] = costOfLaneChangeRight();
-                    path_options["keep"]  = costOfStraightCourse();
-                    path_options["limit"] = costOfAcceleratingToSpeedLimit();
+                    // Find lowest cost action
+                    double left_cost  = costOfLaneChangeLeft();
+                    double keep_cost  = costOfStraightCourse();
+                    double right_cost = costOfLaneChangeRight();
 
-                    // Find lowest cost
-                    
+                    map<double, string> cost_map = { {left_cost,  "left"},
+                                                     {keep_cost,  "keep"},
+                                                     {right_cost, "right"} };
+
+                       // Sort it, etc.
 
 
-                    // Choose a start point (where we are now) and an end-point (may be based on costs over ensemble)
+                    string action = "keep";
 
+                    // Determine an action based on the chosen action
+                    if (action == "left")
+                    {
+
+                    }
+                    else if (action == "keep")
+                    {
+
+                    }
+                    else if (action == "right")
+                    {
+
+                    }
 
                     // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
                     double start_pos_s = car_s;
-                    double start_vel_s = 0.0;
+                    double start_vel_s = 0.4;
                     double end_pos_s   = car_s + 30.0;
-                    double end_vel_s   = 0.0;
+                    double end_vel_s   = 0.4;
 
                     double d_pos = convertLaneToD(1);
                     double start_pos_d = d_pos;
@@ -324,48 +365,54 @@ int main() {
                     double end_vel_d   = 0.0;
 
                     // Generate path data (Frenet)
-                    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
-                                                                   {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   1.0);
-                    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
-                                                                   {end_pos_d,   end_vel_d,   0.0}, 
-                                                                   1.0);
+                    vector<double> next_s_vals_pre = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
+                                                                       {end_pos_s,   end_vel_s,   0.0}, 
+                                                                       1.0,
+                                                                       0.02);
+                    vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
+                                                                       {end_pos_d,   end_vel_d,   0.0}, 
+                                                                       1.0,
+                                                                       0.02);
+
+                    // Set up s,d splines
+                    vector<double> time_vals_pre = {};
+
+                    int num_jerk_values = next_s_vals_pre.size();
+                    for (int i=0; i<num_jerk_values; i++)
+                    {
+                        time_vals_pre.push_back((double)i / 50.0);
+                    }
+
+                    tk::spline spline_s;
+                    spline_s.set_points(time_vals_pre, next_s_vals_pre);
+
+                    tk::spline spline_d;
+                    spline_d.set_points(time_vals_pre, next_d_vals_pre);
+                   
+                    // Calculate interpolated spline in s,d 
+                    vector<double> next_s_vals = {};
+                    vector<double> next_d_vals = {};
+
+                    int num_spline_values = num_jerk_values;       
+                    for (int i=0; i<num_spline_values; i++)
+                    {
+                        double t = (double)i / 50.0;
+                        next_s_vals.push_back(spline_s(i));
+                        next_d_vals.push_back(spline_d(t));
+                    }
 
                     // Convert back to map coordinates
-                    vector<double> next_x_pre_vals = {};
-                    vector<double> next_y_pre_vals = {};
-                    for (int i=0; i<next_s_vals.size(); i++)
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+                    for (int i=0; i<num_spline_values; i++)
                     {
-                        vector<double> xy = getXY(next_s_vals[i],
-                                                  next_d_vals[i],
+                        vector<double> xy = getXY(next_s_vals_pre[i],
+                                                  next_d_vals_pre[i],
                                                   map_waypoints_s,
                                                   map_waypoints_x,
                                                   map_waypoints_y);
-                        next_x_pre_vals.push_back(xy[0]);
-                        next_y_pre_vals.push_back(xy[1]);
-                    }
-
-                    // Use spline interpolator to minimize acceleration at derivative discontinuities
-                    vector<double> time_pre_vals = {};
-                    for (int i=0; i<next_s_vals.size(); i++)
-                    {
-                        time_pre_vals.push_back((double)i / 50.0);
-                    }
-
-                    tk::spline sx;
-                    sx.set_points(time_pre_vals, next_x_pre_vals);
-
-                    tk::spline sy;
-                    sy.set_points(time_pre_vals, next_y_pre_vals);
-                    
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
-
-                    for (int i=0; i<next_s_vals.size(); i++)
-                    {
-                        double t = (double)i / 50.0;
-                        next_x_vals.push_back(sx(t));
-                        next_y_vals.push_back(sy(t));
+                        next_x_vals.push_back(xy[0]);
+                        next_y_vals.push_back(xy[1]);
                     }
 
                     // Send to the simulator
@@ -378,6 +425,7 @@ int main() {
                      */
 
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
+                    //this_thread::sleep_for(chrono::milliseconds(1000));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
                 }
             } 
