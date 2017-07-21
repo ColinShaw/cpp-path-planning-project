@@ -134,7 +134,6 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 // Calculates the coefficients of a jerk-minimizing transition and then calculates the points along the path
 vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time, double time_inc)
 {
-    // Load matrix, vector and compute coefficients
     MatrixXd A = MatrixXd(3,3);
     VectorXd b = VectorXd(3);
     VectorXd x = VectorXd(3);
@@ -162,9 +161,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     double a4 = x[1];
     double a5 = x[2];
 
-    // Iterate on time and produce path result
     vector<double> result;
-
     for (double t=0.0; t<max_time; t+=time_inc)
     {
         double t2 = t * t;
@@ -186,13 +183,22 @@ double convertLaneToD(int lane)
     return 2.0 + 4.0 * (double)(lane - 1);
 }
 
+// Type for the data about the other cars
+struct other_car_t
+{
+    int id;
+    double car_s;
+    double car_d;
+    double car_speed;
+};
+
 // We need a telemetry type encapsulating the data we need for determining course
 struct telemetry_t 
 {
     double car_s;
     double car_d;
     double car_speed;
-    //vector<double> other_cars;    // Need to determine what this exactly is
+    vector<other_car_t> other_cars; 
 };
 
 // And a setpoint type for the controls we are returning...
@@ -203,7 +209,7 @@ struct setpoint_t
     double end_pos_s;
     double end_vel_s;
     double start_pos_d;
-    double end_pos_d;
+    double end_pos_d;    // No end velocity because we are not splitting lane change across multiple plans
 };
 
 // Cost of a change of lane to the left
@@ -311,9 +317,9 @@ int main() {
         istringstream iss(line);
         double x;
         double y;
-        float s;
-        float d_x;
-        float d_y;
+        double s;
+        double d_x;
+        double d_y;
         iss >> x;
         iss >> y;
         iss >> s;
@@ -398,21 +404,23 @@ int main() {
                      ****************************************************************************************************
                      */
                   
-                    // Make the whole telemetry package available to the methods above for cost...
-                    telemetry_t telemetry_data = { car_s, car_d, car_speed };
-
-                    // Look at sensor fusion data -- THIS IS JUST MESSING AROUND
+                    // Build out other_car_t version of the sensor fusion data
+                    vector<other_car_t> other_cars = {};
                     for (int i=0; i<sensor_fusion.size(); i++)
                     {
                         int id    = sensor_fusion[i][0];
-                        double x  = sensor_fusion[i][1];
-                        double y  = sensor_fusion[i][2];
-                        double vx = sensor_fusion[i][3];
-                        double vy = sensor_fusion[i][4];
                         double s  = sensor_fusion[i][5];
                         double d  = sensor_fusion[i][6];
+                        double vx = sensor_fusion[i][3];
+                        double vy = sensor_fusion[i][4];
+                        double speed = sqrt(vx*vx + vy*vy);
+                        other_car_t oc = {id, s, d, speed};
+                        other_cars.push_back(oc); 
                     }
                   
+                    // Make the whole telemetry package available to the methods above for cost...
+                    telemetry_t telemetry_data = {car_s, car_d, car_speed, other_cars};
+
                     // Find lowest cost action
                     double left_cost  = costOfLaneChangeLeft(telemetry_data);
                     double keep_cost  = costOfStraightCourse(telemetry_data);
@@ -431,17 +439,16 @@ int main() {
                     setpoint_t new_setpoints;
                     if (action == "left")
                     {
-                        //new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
+                        new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
                     }
                     else if (action == "keep")
                     {
-                        //new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
+                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
                     }
                     else if (action == "right")
                     {
-                        //new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
+                        new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
                     }
-
 
                     // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
                     double start_pos_s = car_s;
