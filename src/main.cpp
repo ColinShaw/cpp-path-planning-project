@@ -11,6 +11,9 @@
 #include "json.hpp"
 #include "spline.h"
 
+#define MAP_FILE                "../data/highway_map.csv"
+#define NUM_RESAMPLED_WAYPOINTS 10000
+
 using namespace std;
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -127,10 +130,6 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
     return {x, y};
 }
 
-/*
- ***************************************************************************************************************
- */
-
 // Calculates the coefficients of a jerk-minimizing transition and then calculates the points along the path
 vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time, double time_inc)
 {
@@ -168,14 +167,12 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
         double t3 = t * t2;
         double t4 = t * t3;
         double t5 = t * t4;
-    
         double r = a0 + a1*t + a2*t2 + a3*t3 + a4*t4 + a5*t5;
         result.push_back(r);
     }
 
     return result;
 }
-
 
 // Converts an enumerated lane to an absolute measure in terms of Frenet d coordinate (lanes being counting numbers)
 double convertLaneToD(int lane)
@@ -201,15 +198,15 @@ struct telemetry_t
     vector<other_car_t> other_cars; 
 };
 
-// And a setpoint type for the controls we are returning...
+// And a setpoint type for the controls we are returning
 struct setpoint_t
 {
     double start_pos_s;
     double start_vel_s;
     double end_pos_s;
     double end_vel_s;
-    double start_pos_d;
-    double end_pos_d;    // No end velocity because we are not splitting lane change across multiple plans
+    int start_pos_l;
+    int end_pos_l;
 };
 
 // Cost of a change of lane to the left
@@ -222,7 +219,7 @@ double costOfLaneChangeLeft(telemetry_t telemetry_data)
     // Compute lane appropriateness and assign cost
 
     // Compute aggregate cost
-
+    return 1.0;
 }
 
 // Cost of a change of lane to the right
@@ -235,7 +232,7 @@ double costOfLaneChangeRight(telemetry_t telemetry_data)
     // Compute lane appropriteness and assign cost
 
     // Compute aggregate cost
-
+    return 1.0;
 }
 
 // Cost of maintaining straight course
@@ -248,7 +245,7 @@ double costOfStraightCourse(telemetry_t telemetry_data)
     // Compute s-axis proximity to our car behind us and assign cost
 
     // Compute aggregate cost
-
+    return 0.0;
 }
 
 // Determine new setpoints whilst going on the left course 
@@ -289,29 +286,30 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
     // Take min of these, but weighted with distance to the car in front of us
 
     // Return new setpoints
-
+    setpoint_t retval = {
+        telemetry_data.car_s,
+        0.7,
+        telemetry_data.car_s + 30.0,
+        0.7,
+        1,
+        1 
+    };
+    return retval;
 }
 
-
-
-/*
- ***************************************************************************************************************
- */
 
 int main() {
     uWS::Hub h;
 
+    // Load waypoints
     vector<double> map_waypoints_x;
     vector<double> map_waypoints_y;
     vector<double> map_waypoints_s;
     vector<double> map_waypoints_dx;
     vector<double> map_waypoints_dy;
 
-    string map_file_ = "../data/highway_map.csv";
-    double max_s     = 6945.554;
-    ifstream in_map_(map_file_.c_str(), ifstream::in);
     string line;
-
+    ifstream in_map_(MAP_FILE, ifstream::in);
     while (getline(in_map_, line)) 
     {
         istringstream iss(line);
@@ -359,10 +357,9 @@ int main() {
     vector<double> map_waypoints_dx_new;
     vector<double> map_waypoints_dy_new;
 
-    int new_waypoint_size = 10000;
-    for (int i=0; i<new_waypoint_size; i++)
+    for (int i=0; i<NUM_RESAMPLED_WAYPOINTS; i++)
     {
-        double t = (double)i / (double)new_waypoint_size;
+        double t = (double)i / (double)NUM_RESAMPLED_WAYPOINTS;
         map_waypoints_x_new.push_back(waypoint_spline_x(t));
         map_waypoints_y_new.push_back(waypoint_spline_y(t));
         map_waypoints_s_new.push_back(waypoint_spline_s(t));
@@ -376,6 +373,7 @@ int main() {
     map_waypoints_dx = map_waypoints_dx_new;
     map_waypoints_dy = map_waypoints_dy_new;
 
+    // Respond to simulator telemetry messages
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy]
                 (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
@@ -418,7 +416,7 @@ int main() {
                         other_cars.push_back(oc); 
                     }
                   
-                    // Make the whole telemetry package available to the methods above for cost...
+                    // Make the whole telemetry package available to the methods above for cost
                     telemetry_t telemetry_data = {car_s, car_d, car_speed, other_cars};
 
                     // Find lowest cost action
@@ -430,10 +428,10 @@ int main() {
                                                      {keep_cost,  "keep"},
                                                      {right_cost, "right"} };
 
-                    // Sort to find minimum cost...
-
-
-                    string action = "keep";
+                    // First value is the lowest cost 
+                    map<double, string>::iterator cost_map_iterator;
+                    cost_map_iterator = cost_map.begin();
+                    string action = cost_map_iterator->second;
 
                     // Determine an action based on the chosen action
                     setpoint_t new_setpoints;
@@ -450,29 +448,27 @@ int main() {
                         new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
                     }
 
-                    // Choose initial and final conditions for the minimum jerk interpolator (always using zero acceleration endpoints)
-                    double start_pos_s = car_s;
-                    double start_vel_s = 0.7;
-                    double end_pos_s   = car_s + 30.0;
-                    double end_vel_s   = 0.7;
+                    // Conditions for minimum jerk in s (zero start/end acceleration) 
+                    double start_pos_s = new_setpoints.start_pos_s; 
+                    double start_vel_s = new_setpoints.start_vel_s; 
+                    double end_pos_s   = new_setpoints.end_pos_s; 
+                    double end_vel_s   = new_setpoints.end_vel_s; 
 
-                    double d_pos = convertLaneToD(1);
-                    double start_pos_d = d_pos;
-                    double start_vel_d = 0.0;
-                    double end_pos_d   = d_pos;
-                    double end_vel_d   = 0.0;
+                    // Conditions for minimum jerk in d (zero start/end acceleration and velocity, indexing by lane) 
+                    double start_pos_d = convertLaneToD(new_setpoints.start_pos_l);
+                    double end_pos_d   = convertLaneToD(new_setpoints.end_pos_l);
 
-                    // Generate path data (Frenet)
+                    // Generate minimum jerk path in Frenet coordinates
                     vector<double> next_s_vals_pre = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                        {end_pos_s,   end_vel_s,   0.0}, 
                                                                        1.0,
                                                                        0.2);
-                    vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, start_vel_d, 0.0}, 
-                                                                       {end_pos_d,   end_vel_d,   0.0}, 
+                    vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
+                                                                       {end_pos_d,   0.0, 0.0}, 
                                                                        1.0,
                                                                        0.2);
 
-                    // Convert back to map coordinates
+                    // Convert Frenet coordinates to map coordinates
                     vector<double> next_x_vals_pre = {};
                     vector<double> next_y_vals_pre = {};
                     int num_jerk_values            = next_s_vals_pre.size(); 
@@ -496,7 +492,6 @@ int main() {
 
                     tk::spline spline_x;
                     spline_x.set_points(time_vals_pre, next_x_vals_pre);
-
                     tk::spline spline_y;
                     spline_y.set_points(time_vals_pre, next_y_vals_pre);
                    
@@ -513,16 +508,17 @@ int main() {
 
                     // Send to the simulator
                     json msgJson;
-                    msgJson["next_x"] = next_x_vals;
+                    msgJson["next_x"] = next_x_vals;                                     // TODO: Try without splin here now
                     msgJson["next_y"] = next_y_vals;
 
                     /*
                      ****************************************************************************************************
                      */
 
+
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
-                    //this_thread::sleep_for(chrono::milliseconds(1000));
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+                    //this_thread::sleep_for(chrono::milliseconds(1000));
                 }
             } 
             else 
