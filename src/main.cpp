@@ -462,11 +462,11 @@ int main() {
                     vector<double> next_s_vals_pre = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                        {end_pos_s,   end_vel_s,   0.0}, 
                                                                        1.0,
-                                                                       0.2);
+                                                                       0.02);
                     vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
                                                                        {end_pos_d,   0.0, 0.0}, 
                                                                        1.0,
-                                                                       0.2);
+                                                                       0.02);
 
                     // Convert Frenet coordinates to map coordinates
                     vector<double> next_x_vals_pre = {};
@@ -508,8 +508,8 @@ int main() {
 
                     // Send to the simulator
                     json msgJson;
-                    msgJson["next_x"] = next_x_vals;                                     // TODO: Try without splin here now
-                    msgJson["next_y"] = next_y_vals;
+                    msgJson["next_x"] = next_x_vals_pre;                               // TODO: Try without spline here 
+                    msgJson["next_y"] = next_y_vals_pre;
 
                     /*
                      ****************************************************************************************************
