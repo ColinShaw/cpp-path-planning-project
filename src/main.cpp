@@ -288,9 +288,9 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
     // Return new setpoints
     setpoint_t retval = {
         telemetry_data.car_s,
-        0.7,
+        30.0,
         telemetry_data.car_s + 30.0,
-        0.7,
+        30.0,
         1,
         1 
     };
