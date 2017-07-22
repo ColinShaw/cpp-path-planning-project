@@ -161,7 +161,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     double a5 = x[2];
 
     vector<double> result;
-    for (double t=0.0; t<max_time; t+=time_inc)
+    for (double t=time_inc; t<max_time; t+=time_inc)           // Start at the first point from where we are
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -288,9 +288,9 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
     // Return new setpoints
     setpoint_t retval = {
         telemetry_data.car_s,
-        30.0,
-        telemetry_data.car_s + 30.0,
-        30.0,
+        15.0,
+        telemetry_data.car_s + 15.0,
+        15.0,
         1,
         1 
     };
@@ -459,57 +459,45 @@ int main() {
                     double end_pos_d   = convertLaneToD(new_setpoints.end_pos_l);
 
                     // Generate minimum jerk path in Frenet coordinates
-                    vector<double> next_s_vals_pre = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
-                                                                       {end_pos_s,   end_vel_s,   0.0}, 
-                                                                       1.0,
-                                                                       0.02);
-                    vector<double> next_d_vals_pre = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
-                                                                       {end_pos_d,   0.0, 0.0}, 
-                                                                       1.0,
-                                                                       0.02);
+                    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
+                                                                   {end_pos_s,   end_vel_s,   0.0}, 
+                                                                   2.0,
+                                                                   0.02);
+                    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
+                                                                   {end_pos_d,   0.0, 0.0}, 
+                                                                   2.0,
+                                                                   0.02);
 
                     // Convert Frenet coordinates to map coordinates
-                    vector<double> next_x_vals_pre = {};
-                    vector<double> next_y_vals_pre = {};
-                    int num_jerk_values            = next_s_vals_pre.size(); 
-                    for (int i=0; i<num_jerk_values; i++)
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+                    for (int i=0; i<next_s_vals.size(); i++)
                     {
-                        vector<double> xy = getXY(next_s_vals_pre[i],
-                                                  next_d_vals_pre[i],
+                        vector<double> xy = getXY(next_s_vals[i],
+                                                  next_d_vals[i],
                                                   map_waypoints_s,
                                                   map_waypoints_x,
                                                   map_waypoints_y);
-                        next_x_vals_pre.push_back(xy[0]);
-                        next_y_vals_pre.push_back(xy[1]);
+                        next_x_vals.push_back(xy[0]);
+                        next_y_vals.push_back(xy[1]);
                     }
 
-                    // Set up x,y splines
-                    vector<double> time_vals_pre = {};
-                    for (int i=0; i<num_jerk_values; i++)
-                    {
-                        time_vals_pre.push_back((double)i / 5.0);
-                    }
+cout << "s,d:               " << car_s << ", " << car_d << endl;
+cout << "computed next s,d: " << next_s_vals[0] << ", " << next_d_vals[0] << endl;
+cout << "delta s,d:         " << next_s_vals[0] - car_s << ", " << next_d_vals[0] - car_d << endl;
+cout << "x,y:               " << car_x << ", " << car_y << endl;
+cout << "computed next x,y: " << next_x_vals[0] << ", " << next_y_vals[0] << endl;
+cout << "delta x,y:         " << next_x_vals[0] - car_x << ", " << next_y_vals[0] - car_y << endl;
+double dist = sqrt((next_x_vals[0]-car_x)*(next_x_vals[0]-car_x) + (next_y_vals[0]-car_y)*(next_y_vals[0]-car_y));
+cout << "delta position:    " << dist << endl;
+cout << "reported speed:    " << car_speed << endl;
+cout << "computed speed:    " << dist / 0.02 << endl << endl;
 
-                    tk::spline spline_x;
-                    spline_x.set_points(time_vals_pre, next_x_vals_pre);
-                    tk::spline spline_y;
-                    spline_y.set_points(time_vals_pre, next_y_vals_pre);
-                   
-                    // Calculate interpolated spline in x,y
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
-                    int num_spline_values      = 50;       
-                    for (int i=0; i<num_spline_values; i++)
-                    {
-                        double t = (double)i / 50.0;
-                        next_x_vals.push_back(spline_x(t));
-                        next_y_vals.push_back(spline_y(t));
-                    }
 
                     // Send to the simulator
                     json msgJson;
-                    msgJson["next_x"] = next_x_vals_pre;                               // TODO: Try without spline here 
-                    msgJson["next_y"] = next_y_vals_pre;
+                    msgJson["next_x"] = next_x_vals; 
+                    msgJson["next_y"] = next_y_vals;
 
                     /*
                      ****************************************************************************************************
@@ -518,7 +506,7 @@ int main() {
 
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-                    //this_thread::sleep_for(chrono::milliseconds(1000));
+                    //this_thread::sleep_for(chrono::milliseconds(250));
                 }
             } 
             else 
