@@ -161,7 +161,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     double a5 = x[2];
 
     vector<double> result;
-    for (double t=0.0; t<max_time; t+=time_inc)           // Start at the first point from where we are
+    for (double t=0.0; t<max_time; t+=time_inc) 
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -416,11 +416,6 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
-
-                    /* TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-                     ****************************************************************************************************
-                     */
-                  
                     // Build out other_car_t version of the sensor fusion data
                     vector<other_car_t> other_cars = {};
                     for (int i=0; i<sensor_fusion.size(); i++)
@@ -434,9 +429,23 @@ int main() {
                         other_car_t oc = {id, s, d, speed};
                         other_cars.push_back(oc); 
                     }
+
+                    // Conditionally set the position to start the jerk minimizing path from
+                    double pos_s;
+                    double pos_d;
+                    if (previous_path_x.size() == 0)
+                    {
+                        pos_s = car_s;
+                        pos_d = car_d;
+                    }
+                    else
+                    {
+                        pos_s = end_path_s;
+                        pos_d = end_path_d;
+                    }
                   
                     // Make the whole telemetry package available to the methods above for cost
-                    telemetry_t telemetry_data = {car_s, car_d, car_speed, other_cars};
+                    telemetry_t telemetry_data = {pos_s, pos_d, car_speed, other_cars};
 
                     // Find lowest cost action
                     double left_cost  = costOfLaneChangeLeft(telemetry_data);
@@ -480,15 +489,14 @@ int main() {
                     // Generate minimum jerk path in Frenet coordinates
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   2.0,
+                                                                   1.0,
                                                                    0.02);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
                                                                    {end_pos_d,   0.0, 0.0}, 
-                                                                   2.0,
+                                                                   1.0,
                                                                    0.02);
 
                     // Convert Frenet coordinates to map coordinates
-/*
                     vector<double> next_x_vals = {};
                     vector<double> next_y_vals = {};
                     for (int i=0; i<next_s_vals.size(); i++)
@@ -501,55 +509,25 @@ int main() {
                         next_x_vals.push_back(xy[0]);
                         next_y_vals.push_back(xy[1]);
                     }
-*/
 
-/*
-cout << "s,d:               " << car_s << ", " << car_d << endl;
-cout << "computed next s,d: " << next_s_vals[0] << ", " << next_d_vals[0] << endl;
-cout << "delta s,d:         " << next_s_vals[0] - car_s << ", " << next_d_vals[0] - car_d << endl;
-cout << "x,y:               " << car_x << ", " << car_y << endl;
-cout << "computed next x,y: " << next_x_vals[0] << ", " << next_y_vals[0] << endl;
-cout << "delta x,y:         " << next_x_vals[0] - car_x << ", " << next_y_vals[0] - car_y << endl;
-double dist = sqrt((next_x_vals[0]-car_x)*(next_x_vals[0]-car_x) + (next_y_vals[0]-car_y)*(next_y_vals[0]-car_y));
-cout << "delta position:    " << dist << endl;
-cout << "reported speed:    " << car_speed << endl;
-cout << "computed speed:    " << dist / 0.02 << endl << endl;
-*/
+cout << "size          : " << previous_path_x.size() << endl;
+cout << "reported speed: " << car_speed << endl << endl;
 
-                    // Push existing simulator points back to simulator
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
-                    for (int i=0; i<previous_path_x.size(); i++)
-                    {
-                        next_x_vals.push_back(previous_path_x[i]);
-                        next_y_vals.push_back(previous_path_y[i]);
-                    }
-         
-                    // Convert and push Frenet coordinates
-                    for (int i=previous_path_x.size(); i<next_s_vals.size(); i++)
-                    {
-                        vector<double> xy = getXY(next_s_vals[i],
-                                                  next_d_vals[i],
-                                                  map_waypoints_s,
-                                                  map_waypoints_x,
-                                                  map_waypoints_y);
-                        next_x_vals.push_back(xy[0]);
-                        next_y_vals.push_back(xy[1]);
-                    }
-
-                    // Send to the simulator
+                    // Conditionally send new path to the simulator
                     json msgJson;
-                    msgJson["next_x"] = next_x_vals; 
-                    msgJson["next_y"] = next_y_vals;
-
-                    /*
-                     ****************************************************************************************************
-                     */
-
-
+                    if (previous_path_x.size() == 0)
+                    {
+                        msgJson["next_x"] = next_x_vals; 
+                        msgJson["next_y"] = next_y_vals;
+                    }
+                    else 
+                    {
+                        msgJson["next_x"] = previous_path_x; 
+                        msgJson["next_y"] = previous_path_y;
+                    }
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-                    //this_thread::sleep_for(chrono::milliseconds(250));
+
                 }
             } 
             else 
