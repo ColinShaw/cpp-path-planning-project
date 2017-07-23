@@ -292,6 +292,19 @@ setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 
 }
 
+// Just returns the max of two doubles
+double max(double a, double b)
+{
+    if (a>b)
+    {
+        return a;
+    }
+    else
+    {
+        return b;
+    }
+}
+
 // Determine new setpoints whilst going on the straight course 
 setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
@@ -304,11 +317,21 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
     // Take min of these, but weighted with distance to the car in front of us
 
     // Return new setpoints
+    double speed_start = telemetry_data.car_speed;
+    double speed_end   = speed_start;
+
+cout << speed_start << endl;
+cout << speed_end << endl;
+
+    if (speed_start < 30.0)
+    {
+        speed_end = max(speed_start + 5.0, 30.0); 
+    }
     setpoint_t retval = {
         telemetry_data.car_s,
-        15.0,
-        telemetry_data.car_s + 15.0,
-        15.0,
+        speed_start,
+        telemetry_data.car_s + 0.5 * (speed_start + speed_end),
+        speed_end,
         1,
         1 
     };
@@ -511,11 +534,12 @@ int main() {
                     }
 
 cout << "size          : " << previous_path_x.size() << endl;
-cout << "reported speed: " << car_speed << endl << endl;
+cout << "reported speed: " << car_speed << endl;
+cout << "reported s,d  : " << car_s << ", " << car_d << endl << endl;
 
                     // Conditionally send new path to the simulator
                     json msgJson;
-                    if (previous_path_x.size() == 0)
+                    if (previous_path_x.size() < 2)
                     {
                         msgJson["next_x"] = next_x_vals; 
                         msgJson["next_y"] = next_y_vals;
