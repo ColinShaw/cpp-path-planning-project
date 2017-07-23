@@ -161,7 +161,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     double a5 = x[2];
 
     vector<double> result;
-    for (double t=time_inc; t<max_time; t+=time_inc)           // Start at the first point from where we are
+    for (double t=0.0; t<max_time; t+=time_inc)           // Start at the first point from where we are
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -178,6 +178,24 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
 double convertLaneToD(int lane)
 {
     return 2.0 + 4.0 * (double)(lane - 1);
+}
+
+// Fuzzily convert Frenet d value to the nearest enumerated lane
+int convertDtoLane(double d)
+{
+    if (d>1.0 && d<3.0)
+    {
+         return 1;
+    }
+    if (d>5.0 && d<7.0)
+    {
+        return 2;
+    }
+    if (d>9.0 && d<11.0)
+    {
+        return 3;
+    }
+    return 0;
 }
 
 // Type for the data about the other cars
@@ -398,6 +416,7 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
+
                     /* TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
                      ****************************************************************************************************
                      */
@@ -469,6 +488,7 @@ int main() {
                                                                    0.02);
 
                     // Convert Frenet coordinates to map coordinates
+/*
                     vector<double> next_x_vals = {};
                     vector<double> next_y_vals = {};
                     for (int i=0; i<next_s_vals.size(); i++)
@@ -481,7 +501,9 @@ int main() {
                         next_x_vals.push_back(xy[0]);
                         next_y_vals.push_back(xy[1]);
                     }
+*/
 
+/*
 cout << "s,d:               " << car_s << ", " << car_d << endl;
 cout << "computed next s,d: " << next_s_vals[0] << ", " << next_d_vals[0] << endl;
 cout << "delta s,d:         " << next_s_vals[0] - car_s << ", " << next_d_vals[0] - car_d << endl;
@@ -492,7 +514,28 @@ double dist = sqrt((next_x_vals[0]-car_x)*(next_x_vals[0]-car_x) + (next_y_vals[
 cout << "delta position:    " << dist << endl;
 cout << "reported speed:    " << car_speed << endl;
 cout << "computed speed:    " << dist / 0.02 << endl << endl;
+*/
 
+                    // Push existing simulator points back to simulator
+                    vector<double> next_x_vals = {};
+                    vector<double> next_y_vals = {};
+                    for (int i=0; i<previous_path_x.size(); i++)
+                    {
+                        next_x_vals.push_back(previous_path_x[i]);
+                        next_y_vals.push_back(previous_path_y[i]);
+                    }
+         
+                    // Convert and push Frenet coordinates
+                    for (int i=previous_path_x.size(); i<next_s_vals.size(); i++)
+                    {
+                        vector<double> xy = getXY(next_s_vals[i],
+                                                  next_d_vals[i],
+                                                  map_waypoints_s,
+                                                  map_waypoints_x,
+                                                  map_waypoints_y);
+                        next_x_vals.push_back(xy[0]);
+                        next_y_vals.push_back(xy[1]);
+                    }
 
                     // Send to the simulator
                     json msgJson;
