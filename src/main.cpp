@@ -174,14 +174,26 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     return result;
 }
 
-// Converts an enumerated lane to an absolute measure in terms of Frenet d coordinate (lanes being counting numbers)
+// Ultra-explicit conversion of lane number to Frenet d-coordinate
 double convertLaneToD(int lane)
 {
-    return 2.0 + 4.0 * (double)(lane - 1);
+    if (lane == 1)
+    {
+        return 2.0;
+    }
+    if (lane == 2)
+    {
+        return 6.0;
+    }
+    if (lane == 3)
+    {
+        return 10.0;
+    }
+    return 0;
 }
 
-// Fuzzily convert Frenet d value to the nearest enumerated lane
-int convertDtoLane(double d)
+// Fuzzy conversion of Frenet d-coordinate to the nearest enumerated lane
+int convertDToLane(double d)
 {
     if (d>1.0 && d<3.0)
     {
@@ -201,17 +213,17 @@ int convertDtoLane(double d)
 // Type for the data about the other cars
 struct other_car_t
 {
-    int id;
+    int    id;
+    int    car_l;
     double car_s;
-    double car_d;
     double car_speed;
 };
 
 // We need a telemetry type encapsulating the data we need for determining course
 struct telemetry_t 
 {
+    int    car_l;
     double car_s;
-    double car_d;
     double car_speed;
     vector<other_car_t> other_cars; 
 };
@@ -223,9 +235,16 @@ struct setpoint_t
     double start_vel_s;
     double end_pos_s;
     double end_vel_s;
-    int start_pos_l;
-    int end_pos_l;
+    int    start_pos_l;
+    int    end_pos_l;
 };
+
+// Determine distance to closest car in front of us in our lane
+double distanceToClosestCarInFront(telemetry_t telemetry)
+{
+
+
+}
 
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft(telemetry_t telemetry_data)
@@ -446,10 +465,11 @@ int main() {
                         int id    = sensor_fusion[i][0];
                         double s  = sensor_fusion[i][5];
                         double d  = sensor_fusion[i][6];
+                        int l     = convertDToLane(d);
                         double vx = sensor_fusion[i][3];
                         double vy = sensor_fusion[i][4];
                         double speed = sqrt(vx*vx + vy*vy);
-                        other_car_t oc = {id, s, d, speed};
+                        other_car_t oc = {id, l, s, speed};
                         other_cars.push_back(oc); 
                     }
 
@@ -468,7 +488,8 @@ int main() {
                     }
                   
                     // Make the whole telemetry package available to the methods above for cost
-                    telemetry_t telemetry_data = {pos_s, pos_d, car_speed, other_cars};
+                    int pos_l = convertDToLane(pos_d);
+                    telemetry_t telemetry_data = {pos_l, pos_s, car_speed, other_cars};
 
                     // Find lowest cost action
                     double left_cost  = costOfLaneChangeLeft(telemetry_data);
