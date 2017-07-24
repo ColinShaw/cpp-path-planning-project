@@ -11,7 +11,7 @@ struct other_car_t
     double car_speed;
 };
 
-// We need a telemetry type encapsulating the data we need for determining course
+// Telemetry type encapsulating the data we need for determining course
 struct telemetry_t 
 {
     int    car_l;
@@ -20,7 +20,7 @@ struct telemetry_t
     vector<other_car_t> other_cars; 
 };
 
-// And a setpoint type for the controls we are returning
+// Setpoint type for the controls we are returning
 struct setpoint_t
 {
     double start_pos_s;
@@ -30,5 +30,3 @@ struct setpoint_t
     int    start_pos_l;
     int    end_pos_l;
 };
-
-

@@ -12,9 +12,12 @@
 #include "spline.h"
 #include "structs.h"
 
+
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
 #define PATH_PLAN_SECONDS       2.5
+#define LANE_CHANGE_CONSTANT    100.0
+
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -23,9 +26,11 @@ using std::vector;
 using std::map;
 using json = nlohmann::json;
 
+
 constexpr double pi()    { return M_PI; }
 double deg2rad(double x) { return x * pi() / 180; }
 double rad2deg(double x) { return x * 180 / pi(); }
+
 
 string hasData(string s) 
 {
@@ -171,7 +176,6 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
         double r = a0 + a1*t + a2*t2 + a3*t3 + a4*t4 + a5*t5;
         result.push_back(r);
     }
-
     return result;
 }
 
@@ -250,51 +254,50 @@ double distanceToClosestCarBehind(telemetry_t telemetry_data, int lane)
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
-    // Set high cost if we are in the leftmost lane
     if (telemetry_data.car_l == 1)
     {
         return 1000.0; 
     }
-
-    // Get the distance to the nearest cars in the lane to the left
-    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l-1);
-    double leftBehindDistance  = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
-
-    // Compute cost
-    return 1.0;
+    double front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l-1);
+    double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
+    if (front_dist != 0.0 && behind_dist != 0.0)
+    {
+        return LANE_CHANGE_CONSTANT * (1.0 / front_dist + 1.0 / behind_dist);
+    }
+    return 1000.0;
 }
 
 // Cost of a change of lane to the right
 double costOfLaneChangeRight(telemetry_t telemetry_data)
 {
-    // Set high cost if we are in the rightmost lane
     if (telemetry_data.car_l == 3)
     {
         return 1000.0;
     }
-
-    // Get the distance to the nearest cars in the lane to the left
-    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l+1);
-    double leftBehindDistance  = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
-
-    // Compute cost
-    return 1.0;
+    double front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l+1);
+    double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
+    if (front_dist != 0.0 && behind_dist != 0.0)
+    {
+        return LANE_CHANGE_CONSTANT * (1.0 / front_dist + 1.0 / behind_dist);
+    }
+    return 1000.0;
 }
 
 // Cost of maintaining straight course
 double costOfStraightCourse(telemetry_t telemetry_data)
 {
-    // Get distance to the nearest car in the lane in front of us
-    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
-
-    // Compute cost
-    return 0.0;
+    double front_dist = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
+    if (front_dist != 0.0)
+    {
+        return LANE_CHANGE_CONSTANT * 1.0 / front_dist;
+    }
+    return 1000.0;
 }
 
 // Determine new setpoints whilst going on the left course 
 setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Just a constant speed lane shift
+    // Constant speed lane shift to the left
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
@@ -309,7 +312,7 @@ setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 // Determine new setpoints whilst going on the right course 
 setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Just a constant speed lane shift
+    // Constant speed lane shift to the right
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
@@ -558,9 +561,21 @@ int main() {
                         next_y_vals.push_back(xy[1]);
                     }
 
+                    // Compute path length in Frenet coordinates -- ACTUALLY NOT WHERE THIS NEEDS TO BE
+                    double path_length = 0.0;
+                    for (int i=0; i<next_x_vals.size()-1; i++)
+                    {
+                        double x1 = next_x_vals[i];
+                        double y1 = next_y_vals[i];
+                        double x2 = next_x_vals[i+1];
+                        double y2 = next_y_vals[i+1];
+                        path_length += distance(x1, y1, x2, y2);
+                    }
+
 cout << "previous size : " << previous_path_x.size() << endl;
+cout << "reported s,d  : " << car_s << ", " << car_d << endl;
 cout << "reported speed: " << car_speed << endl;
-cout << "reported s,d  : " << car_s << ", " << car_d << endl << endl;
+cout << "est speed     : " << path_length / PATH_PLAN_SECONDS << endl << endl;
 
                     // Conditionally send new path to the simulator
                     json msgJson;
