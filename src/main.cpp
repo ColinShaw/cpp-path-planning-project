@@ -329,9 +329,9 @@ cout << speed_end << endl;
     }
     setpoint_t retval = {
         telemetry_data.car_s,
-        speed_start,
-        telemetry_data.car_s + 0.5 * (speed_start + speed_end),
-        speed_end,
+        20.0,
+        telemetry_data.car_s + 50.0, //telemetry_data.car_s + 0.5 * (speed_start + speed_end),
+        20.0,
         1,
         1 
     };
@@ -512,11 +512,11 @@ int main() {
                     // Generate minimum jerk path in Frenet coordinates
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   1.0,
+                                                                   2.5,
                                                                    0.02);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
                                                                    {end_pos_d,   0.0, 0.0}, 
-                                                                   1.0,
+                                                                   2.5,
                                                                    0.02);
 
                     // Convert Frenet coordinates to map coordinates
@@ -533,7 +533,7 @@ int main() {
                         next_y_vals.push_back(xy[1]);
                     }
 
-cout << "size          : " << previous_path_x.size() << endl;
+cout << "previous size : " << previous_path_x.size() << endl;
 cout << "reported speed: " << car_speed << endl;
 cout << "reported s,d  : " << car_s << ", " << car_d << endl << endl;
 
