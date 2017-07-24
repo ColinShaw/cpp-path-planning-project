@@ -10,6 +10,7 @@
 #include "Eigen-3.3/Eigen/Dense"
 #include "json.hpp"
 #include "spline.h"
+#include "structs.h"
 
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
@@ -20,7 +21,6 @@ using Eigen::MatrixXd;
 using Eigen::VectorXd;
 using std::vector;
 using std::map;
-using std::pair;
 using json = nlohmann::json;
 
 constexpr double pi()    { return M_PI; }
@@ -210,35 +210,6 @@ int convertDToLane(double d)
     }
     return 0;
 }
-
-// Type for the data about the other cars
-struct other_car_t
-{
-    int    id;
-    int    car_l;
-    double car_s;
-    double car_speed;
-};
-
-// We need a telemetry type encapsulating the data we need for determining course
-struct telemetry_t 
-{
-    int    car_l;
-    double car_s;
-    double car_speed;
-    vector<other_car_t> other_cars; 
-};
-
-// And a setpoint type for the controls we are returning
-struct setpoint_t
-{
-    double start_pos_s;
-    double start_vel_s;
-    double end_pos_s;
-    double end_vel_s;
-    int    start_pos_l;
-    int    end_pos_l;
-};
 
 // Determine distance to closest car in front of us in a given lane
 double distanceToClosestCarInFront(telemetry_t telemetry_data, int lane)
