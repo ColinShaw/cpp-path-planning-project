@@ -13,6 +13,7 @@
 
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
+#define PATH_PLAN_SECONDS       2.5
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -239,76 +240,114 @@ struct setpoint_t
     int    end_pos_l;
 };
 
-// Determine distance to closest car in front of us in our lane
-double distanceToClosestCarInFront(telemetry_t telemetry)
+// Determine distance to closest car in front of us in a given lane
+double distanceToClosestCarInFront(telemetry_t telemetry_data, int lane)
 {
+    double closest = 1000000.0;
+    for (int i=0; i<telemetry_data.other_cars.size(); i++)
+    {
+        if (telemetry_data.other_cars[i].car_l == lane)
+        {
+            double diff = telemetry_data.other_cars[i].car_s - telemetry_data.car_s;
+            if (diff > 0.0 && diff < closest)
+            {
+                closest = diff;
+            }
+        }
+    }
+    return closest;
+}
 
-
+// Determine distance to the closest car behind us in a given lane
+double distanceToClosestCarBehind(telemetry_t telemetry_data, int lane)
+{
+    double closest = 1000000.0;
+    for (int i=0; i<telemetry_data.other_cars.size(); i++)
+    {
+        if (telemetry_data.other_cars[i].car_l == lane)
+        {
+            double diff = telemetry_data.car_s - telemetry_data.other_cars[i].car_s;
+            if (diff > 0.0 && diff < closest)
+            {
+                closest = diff;
+            }
+        }
+    }
+    return closest;
 }
 
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
-    // Iterate over other cars 
+    // Set high cost if we are in the leftmost lane
+    if (telemetry_data.car_l == 1)
+    {
+        return 1000.0; 
+    }
 
-    // Compute s-axis proximity to our car in immediate left lane and assign cost
+    // Get the distance to the nearest cars in the lane to the left
+    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l-1);
+    double leftBehindDistance  = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
 
-    // Compute lane appropriateness and assign cost
-
-    // Compute aggregate cost
+    // Compute cost
     return 1.0;
 }
 
 // Cost of a change of lane to the right
 double costOfLaneChangeRight(telemetry_t telemetry_data)
 {
-    // Iterate over other cars
+    // Set high cost if we are in the rightmost lane
+    if (telemetry_data.car_l == 3)
+    {
+        return 1000.0;
+    }
 
-    // Compute s-axis proximity to our car in immediate right lane and assign cost
+    // Get the distance to the nearest cars in the lane to the left
+    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l+1);
+    double leftBehindDistance  = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
 
-    // Compute lane appropriteness and assign cost
-
-    // Compute aggregate cost
+    // Compute cost
     return 1.0;
 }
 
 // Cost of maintaining straight course
 double costOfStraightCourse(telemetry_t telemetry_data)
 {
-    // Iterate over other cars
+    // Get distance to the nearest car in the lane in front of us
+    double leftInFrontDistance = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
 
-    // Compute s-axis proximity to our car in front of us and assign cost
-
-    // Compute s-axis proximity to our car behind us and assign cost
-
-    // Compute aggregate cost
+    // Compute cost
     return 0.0;
 }
 
 // Determine new setpoints whilst going on the left course 
 setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Iterate over other cars
-
-    // Compute s-axis cost proximity of nearest car in front of us in left lane and determine speed
-
-    // Compare with speed limit
-
-    // Return new setpoints
-
+    // Just a constant speed lane shift
+    setpoint_t retval = {
+        telemetry_data.car_s,
+        telemetry_data.car_speed,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed,
+        telemetry_data.car_l,
+        telemetry_data.car_l - 1 
+    };
+    return retval;
 }
 
 // Determine new setpoints whilst going on the right course 
 setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Iterate over other cars
-
-    // Compute s-axis cost proximity of nearest car in front of us in right lane and determine speed
-
-    // Compare with speed limit
-
-    // Return new setpoints
-
+    // Just a constant speed lane shift
+    setpoint_t retval = {
+        telemetry_data.car_s,
+        telemetry_data.car_speed,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed,
+        telemetry_data.car_l,
+        telemetry_data.car_l + 1 
+    };
+    return retval;
 }
 
 // Just returns the max of two doubles
@@ -327,13 +366,7 @@ double max(double a, double b)
 // Determine new setpoints whilst going on the straight course 
 setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Iterate over other cars
-
-    // Compute s-axis cost proximity of nearest car in front of us and determine speed
-
-    // Compare with speed limit
-
-    // Take min of these, but weighted with distance to the car in front of us
+    // Max of speed limit and estimated car in front situation
 
     // Return new setpoints
     double speed_start = telemetry_data.car_speed;
@@ -533,11 +566,11 @@ int main() {
                     // Generate minimum jerk path in Frenet coordinates
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   2.5,
+                                                                   PATH_PLAN_SECONDS,
                                                                    0.02);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
                                                                    {end_pos_d,   0.0, 0.0}, 
-                                                                   2.5,
+                                                                   PATH_PLAN_SECONDS,
                                                                    0.02);
 
                     // Convert Frenet coordinates to map coordinates
