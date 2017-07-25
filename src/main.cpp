@@ -15,8 +15,9 @@
 
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
-#define PATH_PLAN_SECONDS       2.5
-#define LANE_CHANGE_CONSTANT    100.0
+#define PATH_PLAN_SECONDS       1.0
+#define LANE_CHANGE_CONSTANT    40.0
+#define MAX_SPEED_M_S           22.5
 
 
 using namespace std;
@@ -341,13 +342,8 @@ double max(double a, double b)
 setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
     // Max of speed limit and estimated car in front situation
-
-    // Return new setpoints
     double speed_start = telemetry_data.car_speed;
     double speed_end   = speed_start;
-
-cout << speed_start << endl;
-cout << speed_end << endl;
 
     if (speed_start < 30.0)
     {
@@ -355,11 +351,11 @@ cout << speed_end << endl;
     }
     setpoint_t retval = {
         telemetry_data.car_s,
-        20.0,
-        telemetry_data.car_s + 50.0, //telemetry_data.car_s + 0.5 * (speed_start + speed_end),
-        20.0,
-        1,
-        1 
+        MAX_SPEED_M_S,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * MAX_SPEED_M_S,      //telemetry_data.car_s + 0.5 * (speed_start + speed_end),
+        MAX_SPEED_M_S,
+        telemetry_data.car_l,
+        telemetry_data.car_l 
     };
     return retval;
 }
@@ -574,8 +570,7 @@ int main() {
 
 cout << "previous size : " << previous_path_x.size() << endl;
 cout << "reported s,d  : " << car_s << ", " << car_d << endl;
-cout << "reported speed: " << car_speed << endl;
-cout << "est speed     : " << path_length / PATH_PLAN_SECONDS << endl << endl;
+cout << "reported speed: " << car_speed << endl << endl;
 
                     // Conditionally send new path to the simulator
                     json msgJson;
