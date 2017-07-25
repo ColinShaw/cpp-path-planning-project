@@ -18,6 +18,7 @@
 #define PATH_PLAN_SECONDS       1.0
 #define LANE_CHANGE_CONSTANT    40.0
 #define MAX_SPEED_M_S           22.5
+#define SPEED_INCREMENT         7.5
 
 
 using namespace std;
@@ -252,6 +253,17 @@ double distanceToClosestCarBehind(telemetry_t telemetry_data, int lane)
     return closest;
 }
 
+// Speed estimate of the car in front of us 
+double estimatedSpeedOfCarInFront(telemetry_t telemetry_data, save_state_t save_state)
+{
+    if (telemetry_data.car_l != save_state.last_front_car_id)
+    {
+        return 1000.0;
+    }
+    double dist = fabs(telemetry_data.car_s - save_state.last_front_car_s);
+    return dist / PATH_PLAN_SECONDS;
+}
+
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
@@ -339,21 +351,18 @@ double max(double a, double b)
 }
 
 // Determine new setpoints whilst going on the straight course 
-setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
+setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_state_t save_state)
 {
-    // Max of speed limit and estimated car in front situation
-    double speed_start = telemetry_data.car_speed;
-    double speed_end   = speed_start;
-
-    if (speed_start < 30.0)
-    {
-        speed_end = max(speed_start + 5.0, 30.0); 
-    }
+    double speed_limit        = MAX_SPEED_M_S;
+    double car_in_front_speed = estimatedSpeedOfCarInFront(telemetry_data, save_state);
+    double hard_limit         = max(speed_limit, car_in_front_speed);
+    double speed_start        = telemetry_data.car_speed;
+    double speed_end          = max(speed_start + SPEED_INCREMENT, hard_limit);
     setpoint_t retval = {
         telemetry_data.car_s,
-        MAX_SPEED_M_S,
-        telemetry_data.car_s + PATH_PLAN_SECONDS * MAX_SPEED_M_S,      //telemetry_data.car_s + 0.5 * (speed_start + speed_end),
-        MAX_SPEED_M_S,
+        speed_start,
+        telemetry_data.car_s + 0.5 * (speed_start + speed_end),    // THIS NEEDS WORK!
+        speed_end,
         telemetry_data.car_l,
         telemetry_data.car_l 
     };
@@ -436,8 +445,11 @@ int main() {
     map_waypoints_dx = map_waypoints_dx_new;
     map_waypoints_dy = map_waypoints_dy_new;
 
+    save_state_t save_state;
+
     // Respond to simulator telemetry messages
-    h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, &map_waypoints_dx, &map_waypoints_dy]
+    h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, 
+                 &map_waypoints_dx, &map_waypoints_dy, &save_state]
                 (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
         if (length && length > 2 && data[0] == '4' && data[1] == '2') 
@@ -461,7 +473,7 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
-                    // Build out other_car_t version of the sensor fusion data
+                    // Build an other_car_t version of the sensor fusion data
                     vector<other_car_t> other_cars = {};
                     for (int i=0; i<sensor_fusion.size(); i++)
                     {
@@ -516,7 +528,7 @@ int main() {
                     }
                     else if (action == "keep")
                     {
-                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
+                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data, save_state);
                     }
                     else if (action == "right")
                     {

@@ -2,6 +2,15 @@
 
 using std::vector;
 
+// Type for saving state between evaluation cycles with the simulator
+struct save_state_t
+{
+    double last_s;
+    double last_d;
+    int    last_front_car_id;
+    double last_front_car_s;
+};
+
 // Type for the data about the other cars
 struct other_car_t
 {
