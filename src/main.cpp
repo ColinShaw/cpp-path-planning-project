@@ -354,9 +354,8 @@ double max(double a, double b)
 // Determine new setpoints whilst going on the straight course 
 setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_state_t save_state)
 {
-    double speed_limit        = MAX_SPEED_M_S;
     double car_in_front_speed = estimatedSpeedOfCarInFront(telemetry_data, save_state);
-    double hard_limit         = max(speed_limit, car_in_front_speed);
+    double hard_limit         = max(MAX_SPEED_M_S, car_in_front_speed);
     double speed_start        = telemetry_data.car_speed;
     double speed_end          = max(speed_start + SPEED_INCREMENT, hard_limit);
     setpoint_t retval = {
@@ -368,6 +367,69 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_
         telemetry_data.car_l 
     };
     return retval;
+}
+
+// Calculate the lowest cost action
+string calculateLowestCostAction(telemetry_t telemetry_data)
+{
+    double left_cost  = costOfLaneChangeLeft(telemetry_data);
+    double keep_cost  = costOfStraightCourse(telemetry_data);
+    double right_cost = costOfLaneChangeRight(telemetry_data);
+
+    map<double, string> cost_map = { {left_cost,  "left"},
+                                     {keep_cost,  "keep"},
+                                     {right_cost, "right"} };
+
+    // First value is the lowest cost since it is a priority queue on key
+    map<double, string>::iterator cost_map_iterator;
+    cost_map_iterator = cost_map.begin();
+    string action = cost_map_iterator->second;
+    return action;
+}
+
+// Compute minimum jerk path and convert to map coordinates
+vector<vector<double>> computeMinimumJerkMapPath(setpoint_t new_setpoints,
+                                                 vector<double> map_waypoints_s,
+                                                 vector<double> map_waypoints_x,
+                                                 vector<double> map_waypoints_y)
+{
+    // Conditions for minimum jerk in s (zero start/end acceleration) 
+    double start_pos_s = new_setpoints.start_pos_s; 
+    double start_vel_s = new_setpoints.start_vel_s; 
+    double end_pos_s   = new_setpoints.end_pos_s; 
+    double end_vel_s   = new_setpoints.end_vel_s; 
+
+    // Conditions for minimum jerk in d (zero start/end acceleration and velocity, indexing by lane) 
+    double start_pos_d = convertLaneToD(new_setpoints.start_pos_l);
+    double end_pos_d   = convertLaneToD(new_setpoints.end_pos_l);
+
+    // Generate minimum jerk path in Frenet coordinates
+    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
+                                                   {end_pos_s,   end_vel_s,   0.0}, 
+                                                   PATH_PLAN_SECONDS,
+                                                   PATH_PLAN_INCREMENT);
+    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
+                                                   {end_pos_d,   0.0, 0.0}, 
+                                                   PATH_PLAN_SECONDS,
+                                                   PATH_PLAN_INCREMENT);
+
+    // Convert Frenet coordinates to map coordinates
+    vector<double> next_x_vals = {};
+    vector<double> next_y_vals = {};
+    for (int i=0; i<next_s_vals.size(); i++)
+    {
+        vector<double> xy = getXY(next_s_vals[i],
+                                  next_d_vals[i],
+                                  map_waypoints_s,
+                                  map_waypoints_x,
+                                  map_waypoints_y);
+        next_x_vals.push_back(xy[0]);
+        next_y_vals.push_back(xy[1]);
+    }
+    vector<vector<double>> next_xy = {};
+    next_xy.push_back(next_x_vals);
+    next_xy.push_back(next_y_vals);
+    return next_xy;
 }
 
 int main() {
@@ -473,6 +535,21 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
+                    // Conditionally set the position to start the jerk minimizing path from
+                    double pos_s;
+                    double pos_d;
+                    if (previous_path_x.size() == 0)
+                    {
+                        pos_s = car_s;
+                        pos_d = car_d;
+                    }
+                    else
+                    {
+                        pos_s = end_path_s;
+                        pos_d = end_path_d;
+                    }
+
+                  
                     // Build an other_car_t version of the sensor fusion data
                     vector<other_car_t> other_cars = {};
                     for (int i=0; i<sensor_fusion.size(); i++)
@@ -488,37 +565,13 @@ int main() {
                         other_cars.push_back(oc); 
                     }
 
-                    // Conditionally set the position to start the jerk minimizing path from
-                    double pos_s;
-                    double pos_d;
-                    if (previous_path_x.size() == 0)
-                    {
-                        pos_s = car_s;
-                        pos_d = car_d;
-                    }
-                    else
-                    {
-                        pos_s = end_path_s;
-                        pos_d = end_path_d;
-                    }
-                  
                     // Make the whole telemetry package available to the methods above for cost
                     int pos_l = convertDToLane(pos_d);
                     telemetry_t telemetry_data = {pos_l, pos_s, car_speed, other_cars};
 
+
                     // Find lowest cost action
-                    double left_cost  = costOfLaneChangeLeft(telemetry_data);
-                    double keep_cost  = costOfStraightCourse(telemetry_data);
-                    double right_cost = costOfLaneChangeRight(telemetry_data);
-
-                    map<double, string> cost_map = { {left_cost,  "left"},
-                                                     {keep_cost,  "keep"},
-                                                     {right_cost, "right"} };
-
-                    // First value is the lowest cost since it is a priority queue on key
-                    map<double, string>::iterator cost_map_iterator;
-                    cost_map_iterator = cost_map.begin();
-                    string action = cost_map_iterator->second;
+                    string action = calculateLowestCostAction(telemetry_data);
 
                     // Determine an action based on the chosen action
                     setpoint_t new_setpoints;
@@ -535,39 +588,11 @@ int main() {
                         new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
                     }
 
-                    // Conditions for minimum jerk in s (zero start/end acceleration) 
-                    double start_pos_s = new_setpoints.start_pos_s; 
-                    double start_vel_s = new_setpoints.start_vel_s; 
-                    double end_pos_s   = new_setpoints.end_pos_s; 
-                    double end_vel_s   = new_setpoints.end_vel_s; 
-
-                    // Conditions for minimum jerk in d (zero start/end acceleration and velocity, indexing by lane) 
-                    double start_pos_d = convertLaneToD(new_setpoints.start_pos_l);
-                    double end_pos_d   = convertLaneToD(new_setpoints.end_pos_l);
-
-                    // Generate minimum jerk path in Frenet coordinates
-                    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
-                                                                   {end_pos_s,   end_vel_s,   0.0}, 
-                                                                   PATH_PLAN_SECONDS,
-                                                                   PATH_PLAN_INCREMENT);
-                    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
-                                                                   {end_pos_d,   0.0, 0.0}, 
-                                                                   PATH_PLAN_SECONDS,
-                                                                   PATH_PLAN_INCREMENT);
-
-                    // Convert Frenet coordinates to map coordinates
-                    vector<double> next_x_vals = {};
-                    vector<double> next_y_vals = {};
-                    for (int i=0; i<next_s_vals.size(); i++)
-                    {
-                        vector<double> xy = getXY(next_s_vals[i],
-                                                  next_d_vals[i],
-                                                  map_waypoints_s,
-                                                  map_waypoints_x,
-                                                  map_waypoints_y);
-                        next_x_vals.push_back(xy[0]);
-                        next_y_vals.push_back(xy[1]);
-                    }
+                    // Compute path
+                    vector<vector<double>> path_xy = computeMinimumJerkMapPath(new_setpoints,
+                                                                               map_waypoints_s,
+                                                                               map_waypoints_x,
+                                                                               map_waypoints_y);
 
 cout << "previous size : " << previous_path_x.size() << endl;
 cout << "reported s,d  : " << car_s << ", " << car_d << endl;
@@ -577,8 +602,8 @@ cout << "reported speed: " << car_speed << endl << endl;
                     json msgJson;
                     if (previous_path_x.size() < 2)
                     {
-                        msgJson["next_x"] = next_x_vals; 
-                        msgJson["next_y"] = next_y_vals;
+                        msgJson["next_x"] = path_xy[0]; 
+                        msgJson["next_y"] = path_xy[1];
                     }
                     else 
                     {
