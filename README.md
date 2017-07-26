@@ -113,12 +113,18 @@ are the equations that govern this simplification as a 3rd order polynomial:
 
 ![3rd order polynomial system](/images/3rdOrderSystem.png)
 
-Some example code can be found in the `/python` directory of the project.  It turns out 
-that while the model supports acceleration, it is not sufficient to meet the requirements 
-of a starting and ending velocity with zero acceleration at the start and end.  That said,
-I ended up using the normal jerk minimizing 5th order polynomial.  The jerk minimizing 
-trajectory generation is performed in the `minimum_jerk_path` function on line `xyz` 
-of `main.cpp`.
+Some example code can be found in the `/python` directory of the project.  The reason this
+seemed like a good idea was first because it made sense given the zero acceleration 
+constraint (until it proved not to minimize jerk), and also because it simplifies the 
+system of equations to such a degree that there would not need to be reliance on 
+a linear algebra library for computing coefficients.  This would simplify the code and
+reduce a dependency.
+
+However, it turns out that while the simpler model supports acceleration, it is not 
+sufficient to meet the requirements of a starting and ending velocity with zero acceleration 
+at the start and end.  That said, I ended up using the normal jerk minimizing 5th order 
+polynomial.  The jerk minimizing trajectory generation is performed in the 
+`minimum_jerk_path` function on line `xyz` of `main.cpp`.
 
 
 
