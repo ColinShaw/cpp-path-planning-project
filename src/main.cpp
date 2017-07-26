@@ -170,7 +170,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     double a5 = x[2];
 
     vector<double> result;
-    for (double t=0.0; t<max_time; t+=time_inc) 
+    for (double t=0.0; t<max_time+0.001; t+=time_inc) 
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -182,7 +182,7 @@ vector<double> minimum_jerk_path(vector<double> start, vector<double> end, doubl
     return result;
 }
 
-// Ultra-explicit conversion of lane number to Frenet d-coordinate
+// Explicit conversion of lane number to Frenet d-coordinate
 double convertLaneToD(int lane)
 {
     if (lane == 1)
@@ -359,27 +359,16 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_
     double hard_limit         = max(speed_limit, car_in_front_speed);
     double speed_start        = telemetry_data.car_speed;
     double speed_end          = max(speed_start + SPEED_INCREMENT, hard_limit);
-    /*
     setpoint_t retval = {
         telemetry_data.car_s,
         speed_start,
-        telemetry_data.car_s + 0.5 * (speed_start + speed_end),    // THIS NEEDS WORK!
+        telemetry_data.car_s + PATH_PLAN_SECONDS * 0.5 * (speed_start + speed_end), 
         speed_end,
-        telemetry_data.car_l,
-        telemetry_data.car_l 
-    };
-    */
-    setpoint_t retval = {
-        telemetry_data.car_s,
-        20.0,
-        telemetry_data.car_s + 20.0,
-        20.0,
         telemetry_data.car_l,
         telemetry_data.car_l 
     };
     return retval;
 }
-
 
 int main() {
     uWS::Hub h;
@@ -526,7 +515,7 @@ int main() {
                                                      {keep_cost,  "keep"},
                                                      {right_cost, "right"} };
 
-                    // First value is the lowest cost 
+                    // First value is the lowest cost since it is a priority queue on key
                     map<double, string>::iterator cost_map_iterator;
                     cost_map_iterator = cost_map.begin();
                     string action = cost_map_iterator->second;
@@ -578,17 +567,6 @@ int main() {
                                                   map_waypoints_y);
                         next_x_vals.push_back(xy[0]);
                         next_y_vals.push_back(xy[1]);
-                    }
-
-                    // Compute path length in Frenet coordinates -- ACTUALLY NOT WHERE THIS NEEDS TO BE
-                    double path_length = 0.0;
-                    for (int i=0; i<next_x_vals.size()-1; i++)
-                    {
-                        double x1 = next_x_vals[i];
-                        double y1 = next_y_vals[i];
-                        double x2 = next_x_vals[i+1];
-                        double y2 = next_y_vals[i+1];
-                        path_length += distance(x1, y1, x2, y2);
                     }
 
 cout << "previous size : " << previous_path_x.size() << endl;

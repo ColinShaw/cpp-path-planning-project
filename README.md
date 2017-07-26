@@ -4,8 +4,7 @@ This is the path planning project for term 3 of Udacity's self-driving car progr
 original repo is available [here](https://github.com/udacity/CarND-Path-Planning-Project) and the 
 simulator is available [here](https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
 
-
-IMAGE GOES HERE
+    IMAGE GOES HERE
 
 
 
@@ -104,20 +103,22 @@ next does not experience jerk.  The velocity has the constraint that the velocit
 end of one frame must match the velocity at the beginning of the next frame, with 
 implications having to do with both acceleration and jerk.
 
-There is one consideration that is non-trivial that needs to be described.  The normal
-constraints for minimum jerk involve the starting and ending state position, velocity 
-and acceleration.  We have discussed that the acceleration is zero.  However, there
-is a potential conflict of interest in solving the system of equations if the distance
-traveled between the start and end does not coordinate with the velocities.  That is 
-to say, for constant velocity, it is simple to predict the ending position given the
-velocity and starting position.  However, it is not trivial to predict the ending
-position when the velocity is not constant.  If the ending position is not consistent
-the path predicted will not behave as expected.
+I tried some alternative models to the standard jerk minimizing 5th order polynomial 
+model given the added constraint of zero acceleration at the frame boundaries.  Below
+are the equations that govern this simplification as a 3rd order polynomial:
 
-MORE DETAIL ON FIXING THIS
+![3rd order polynomial](/images/3rdOrder.png)
 
-The jerk minimizing trajectory generation is performed in the `minimum_jerk_path`
-function on line `xyz` of `main.cpp`.
+... leading to four equations in four unknowns...
+
+![3rd order polynomial system](/images/3rdOrderSystem.png)
+
+Some example code can be found in the `/python` directory of the project.  It turns out 
+that while the model supports acceleration, it is not sufficient to meet the requirements 
+of a starting and ending velocity with zero acceleration at the start and end.  That said,
+I ended up using the normal jerk minimizing 5th order polynomial.  The jerk minimizing 
+trajectory generation is performed in the `minimum_jerk_path` function on line `xyz` 
+of `main.cpp`.
 
 
 
@@ -166,6 +167,26 @@ example of this for the straight path case can been seen in the
 
 
 
+## The Car in Action
+
+Here is a video of the car driving in action:
+
+    LINK TO VIDEO
+
+
+
 ## Challenges Encountered
 
+
+
+
+## Code Style
+
+There isn't much to say about the code style for this project.  It has utterly
+minimal abstraction and is very direct.  One reason for this is the general
+simplicity of the control flow.  There really is not a lot of value in abstracting
+aspects of this project other than organization.  What I did do was clean up the
+initial code given to us, remove aspects that were unused or unnecessay, and 
+adhere to a clean style for what I added.  I did, of course, pull out the types
+to `structs.h` so that they were a more clear reference.
 
