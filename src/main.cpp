@@ -16,6 +16,7 @@
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
 #define PATH_PLAN_SECONDS       1.0
+#define PATH_PLAN_INCREMENT     0.02
 #define LANE_CHANGE_CONSTANT    40.0
 #define MAX_SPEED_M_S           22.5
 #define SPEED_INCREMENT         7.5
@@ -202,15 +203,15 @@ double convertLaneToD(int lane)
 // Fuzzy conversion of Frenet d-coordinate to the nearest enumerated lane
 int convertDToLane(double d)
 {
-    if (d>1.0 && d<3.0)
+    if (d<4)
     {
          return 1;
     }
-    if (d>5.0 && d<7.0)
+    if (d>=4.0 && d<8.0)
     {
         return 2;
     }
-    if (d>9.0 && d<11.0)
+    if (d>=8.0)
     {
         return 3;
     }
@@ -358,11 +359,21 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_
     double hard_limit         = max(speed_limit, car_in_front_speed);
     double speed_start        = telemetry_data.car_speed;
     double speed_end          = max(speed_start + SPEED_INCREMENT, hard_limit);
+    /*
     setpoint_t retval = {
         telemetry_data.car_s,
         speed_start,
         telemetry_data.car_s + 0.5 * (speed_start + speed_end),    // THIS NEEDS WORK!
         speed_end,
+        telemetry_data.car_l,
+        telemetry_data.car_l 
+    };
+    */
+    setpoint_t retval = {
+        telemetry_data.car_s,
+        20.0,
+        telemetry_data.car_s + 20.0,
+        20.0,
         telemetry_data.car_l,
         telemetry_data.car_l 
     };
@@ -549,11 +560,11 @@ int main() {
                     vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
                                                                    {end_pos_s,   end_vel_s,   0.0}, 
                                                                    PATH_PLAN_SECONDS,
-                                                                   0.02);
+                                                                   PATH_PLAN_INCREMENT);
                     vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
                                                                    {end_pos_d,   0.0, 0.0}, 
                                                                    PATH_PLAN_SECONDS,
-                                                                   0.02);
+                                                                   PATH_PLAN_INCREMENT);
 
                     // Convert Frenet coordinates to map coordinates
                     vector<double> next_x_vals = {};
