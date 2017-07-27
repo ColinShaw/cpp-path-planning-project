@@ -18,10 +18,11 @@
 #define PATH_PLAN_SECONDS       2.0
 #define PATH_PLAN_INCREMENT     0.02
 #define LANE_CHANGE_COST_CONST  50.0
-#define MAX_SPEED_M_S           18.0
+#define MAX_SPEED_M_S           20.0
 #define SPEED_INCREMENT         5.0
 #define LANE_CHANGE_CONSTANT    0.65
-#define SPEED_SAFETY_FACTOR     2.0
+#define DISTANCE_ADJUSTMENT     5.0
+#define DISTANCE_THRESHOLD      25.0
 
 
 using namespace std;
@@ -142,7 +143,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
 }
 
 // Calculates jerk minimizing path
-vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time, double time_inc)
+vector<double> computeMinimumJerk(vector<double> start, vector<double> end, double max_time, double time_inc)
 {
     MatrixXd A = MatrixXd(3,3);
     VectorXd b = VectorXd(3);
@@ -256,35 +257,6 @@ double distanceToClosestCarBehind(telemetry_t telemetry_data, int lane)
     return closest;
 }
 
-// Speed estimate of the car in front of us 
-double estimatedSpeedOfCarInFront(telemetry_t telemetry_data, save_state_t save_state)
-{
-    double closest = 1000000.0;
-    int id = 0;
-    for (int i=0; i<telemetry_data.other_cars.size(); i++)
-    {
-        if (telemetry_data.other_cars[i].id == save_state.last_front_car_id)
-        {
-            double diff = telemetry_data.car_s - telemetry_data.other_cars[i].car_s;
-            if (diff > 0.0 && diff < closest)
-            {
-                closest = diff;
-                id = telemetry_data.other_cars[i].id;
-            }
-        }
-    }
-    if (id != save_state.last_front_car_id)
-    {
-        return MAX_SPEED_M_S;
-    }
-    save_state.last_front_car_id = id;
-    double dist = fabs(telemetry_data.car_s - save_state.last_front_car_s);
-    double speed = dist / PATH_PLAN_SECONDS;
-
-cout << "front car speed: " << speed << endl;
-    return speed;
-}
-
 // Cost of a change of lane to the left
 double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
@@ -358,30 +330,17 @@ setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
     return retval;
 }
 
-// Just returns the max of two doubles
-double min(double a, double b)
-{
-    if (a<b)
-    {
-        return a;
-    }
-    else
-    {
-        return b;
-    }
-}
-
 // Determine new setpoints whilst going on the straight course 
-setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_state_t save_state)
+setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
-    double car_in_front_speed = estimatedSpeedOfCarInFront(telemetry_data, save_state);
-    double hard_limit         = min(MAX_SPEED_M_S, car_in_front_speed) - SPEED_SAFETY_FACTOR;
+    double car_in_front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
+    double car_in_front_adj   = DISTANCE_ADJUSTMENT * (car_in_front_dist - DISTANCE_THRESHOLD);
     double speed_start        = telemetry_data.car_speed;
     if (speed_start > MAX_SPEED_M_S)
     {
         speed_start = MAX_SPEED_M_S;
     }
-    double speed_end          = min(speed_start + SPEED_INCREMENT, hard_limit);
+    double speed_end          = speed_start + car_in_front_adj;
 
 cout << "speed_start " << speed_start << endl;
 cout << "speed_end " << speed_end << endl << endl;
@@ -432,14 +391,14 @@ vector<vector<double>> computeMinimumJerkMapPath(setpoint_t new_setpoints,
     double end_pos_d   = convertLaneToD(new_setpoints.end_pos_l);
 
     // Generate minimum jerk path in Frenet coordinates
-    vector<double> next_s_vals = minimum_jerk_path({start_pos_s, start_vel_s, 0.0}, 
-                                                   {end_pos_s,   end_vel_s,   0.0}, 
-                                                   PATH_PLAN_SECONDS,
-                                                   PATH_PLAN_INCREMENT);
-    vector<double> next_d_vals = minimum_jerk_path({start_pos_d, 0.0, 0.0}, 
-                                                   {end_pos_d,   0.0, 0.0}, 
-                                                   PATH_PLAN_SECONDS,
-                                                   PATH_PLAN_INCREMENT);
+    vector<double> next_s_vals = computeMinimumJerk({start_pos_s, start_vel_s, 0.0}, 
+                                                    {end_pos_s,   end_vel_s,   0.0}, 
+                                                    PATH_PLAN_SECONDS,
+                                                    PATH_PLAN_INCREMENT);
+    vector<double> next_d_vals = computeMinimumJerk({start_pos_d, 0.0, 0.0}, 
+                                                    {end_pos_d,   0.0, 0.0}, 
+                                                    PATH_PLAN_SECONDS,
+                                                    PATH_PLAN_INCREMENT);
 
     // Convert Frenet coordinates to map coordinates
     vector<double> next_x_vals = {};
@@ -535,12 +494,9 @@ int main() {
     map_waypoints_dx = map_waypoints_dx_new;
     map_waypoints_dy = map_waypoints_dy_new;
 
-    save_state_t save_state;
-    save_state.last_front_car_id = -1;
-
     // Respond to simulator telemetry messages
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, 
-                 &map_waypoints_dx, &map_waypoints_dy, &save_state]
+                 &map_waypoints_dx, &map_waypoints_dy]
                 (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
         if (length && length > 2 && data[0] == '4' && data[1] == '2') 
@@ -610,7 +566,7 @@ int main() {
                     }
                     else if (action == "keep")
                     {
-                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data, save_state);
+                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
                     }
                     else if (action == "right")
                     {
