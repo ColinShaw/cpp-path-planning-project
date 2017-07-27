@@ -15,11 +15,13 @@
 
 #define MAP_FILE                "../data/highway_map.csv"
 #define NUM_RESAMPLED_WAYPOINTS 10000
-#define PATH_PLAN_SECONDS       1.0
+#define PATH_PLAN_SECONDS       2.0
 #define PATH_PLAN_INCREMENT     0.02
-#define LANE_CHANGE_CONSTANT    40.0
-#define MAX_SPEED_M_S           22.5
-#define SPEED_INCREMENT         7.5
+#define LANE_CHANGE_COST_CONST  50.0
+#define MAX_SPEED_M_S           18.0
+#define SPEED_INCREMENT         5.0
+#define LANE_CHANGE_CONSTANT    0.65
+#define SPEED_SAFETY_FACTOR     2.0
 
 
 using namespace std;
@@ -139,7 +141,7 @@ vector<double> getXY(double s, double d, vector<double> maps_s, vector<double> m
     return {x, y};
 }
 
-// Calculates the coefficients of a jerk-minimizing transition and then calculates the points along the path
+// Calculates jerk minimizing path
 vector<double> minimum_jerk_path(vector<double> start, vector<double> end, double max_time, double time_inc)
 {
     MatrixXd A = MatrixXd(3,3);
@@ -257,12 +259,30 @@ double distanceToClosestCarBehind(telemetry_t telemetry_data, int lane)
 // Speed estimate of the car in front of us 
 double estimatedSpeedOfCarInFront(telemetry_t telemetry_data, save_state_t save_state)
 {
-    if (telemetry_data.car_l != save_state.last_front_car_id)
+    double closest = 1000000.0;
+    int id = 0;
+    for (int i=0; i<telemetry_data.other_cars.size(); i++)
     {
-        return 1000.0;
+        if (telemetry_data.other_cars[i].id == save_state.last_front_car_id)
+        {
+            double diff = telemetry_data.car_s - telemetry_data.other_cars[i].car_s;
+            if (diff > 0.0 && diff < closest)
+            {
+                closest = diff;
+                id = telemetry_data.other_cars[i].id;
+            }
+        }
     }
+    if (id != save_state.last_front_car_id)
+    {
+        return MAX_SPEED_M_S;
+    }
+    save_state.last_front_car_id = id;
     double dist = fabs(telemetry_data.car_s - save_state.last_front_car_s);
-    return dist / PATH_PLAN_SECONDS;
+    double speed = dist / PATH_PLAN_SECONDS;
+
+cout << "front car speed: " << speed << endl;
+    return speed;
 }
 
 // Cost of a change of lane to the left
@@ -276,7 +296,7 @@ double costOfLaneChangeLeft(telemetry_t telemetry_data)
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_CONSTANT * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_CONST * (1.0 / front_dist + 1.0 / behind_dist);
     }
     return 1000.0;
 }
@@ -292,7 +312,7 @@ double costOfLaneChangeRight(telemetry_t telemetry_data)
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_CONSTANT * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_CONST * (1.0 / front_dist + 1.0 / behind_dist);
     }
     return 1000.0;
 }
@@ -311,12 +331,12 @@ double costOfStraightCourse(telemetry_t telemetry_data)
 // Determine new setpoints whilst going on the left course 
 setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Constant speed lane shift to the left
+    // Lane shift to the left
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed,
+        telemetry_data.car_s + LANE_CHANGE_CONSTANT * PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed - SPEED_INCREMENT,
         telemetry_data.car_l,
         telemetry_data.car_l - 1 
     };
@@ -326,12 +346,12 @@ setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 // Determine new setpoints whilst going on the right course 
 setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 {
-    // Constant speed lane shift to the right
+    // Lane shift to the right
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed,
+        telemetry_data.car_s + LANE_CHANGE_CONSTANT * PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed - SPEED_INCREMENT,
         telemetry_data.car_l,
         telemetry_data.car_l + 1 
     };
@@ -339,9 +359,9 @@ setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 }
 
 // Just returns the max of two doubles
-double max(double a, double b)
+double min(double a, double b)
 {
-    if (a>b)
+    if (a<b)
     {
         return a;
     }
@@ -355,9 +375,17 @@ double max(double a, double b)
 setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data, save_state_t save_state)
 {
     double car_in_front_speed = estimatedSpeedOfCarInFront(telemetry_data, save_state);
-    double hard_limit         = max(MAX_SPEED_M_S, car_in_front_speed);
+    double hard_limit         = min(MAX_SPEED_M_S, car_in_front_speed) - SPEED_SAFETY_FACTOR;
     double speed_start        = telemetry_data.car_speed;
-    double speed_end          = max(speed_start + SPEED_INCREMENT, hard_limit);
+    if (speed_start > MAX_SPEED_M_S)
+    {
+        speed_start = MAX_SPEED_M_S;
+    }
+    double speed_end          = min(speed_start + SPEED_INCREMENT, hard_limit);
+
+cout << "speed_start " << speed_start << endl;
+cout << "speed_end " << speed_end << endl << endl;
+
     setpoint_t retval = {
         telemetry_data.car_s,
         speed_start,
@@ -508,6 +536,7 @@ int main() {
     map_waypoints_dy = map_waypoints_dy_new;
 
     save_state_t save_state;
+    save_state.last_front_car_id = -1;
 
     // Respond to simulator telemetry messages
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, 
