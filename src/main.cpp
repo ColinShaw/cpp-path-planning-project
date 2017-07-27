@@ -13,15 +13,21 @@
 
 
 #define MAP_FILE                "../data/highway_map.csv"
+
 #define NUM_RESAMPLED_WAYPOINTS 10000
-#define PATH_PLAN_SECONDS       2.0
+
+#define PATH_PLAN_SECONDS       2.5
 #define PATH_PLAN_INCREMENT     0.02
-#define LANE_CHANGE_COST_CONST  50.0
-#define MAX_SPEED_M_S           20.0
-#define SPEED_INCREMENT         5.0
-#define LANE_CHANGE_CONSTANT    0.65
-#define DISTANCE_ADJUSTMENT     5.0
-#define DISTANCE_THRESHOLD      25.0
+
+#define LANE_CHANGE_COST_CONST  0.6
+
+#define MAX_SPEED_M_S           19.5
+
+#define SPEED_INCREMENT         0.0
+#define LANE_CHANGE_CONSTANT    0.95
+
+#define DISTANCE_ADJUSTMENT     2.5
+#define DISTANCE_THRESHOLD      20.0
 
 
 using namespace std;
@@ -219,7 +225,7 @@ vector<double> computeMinimumJerk(vector<double> start, vector<double> end, doub
     double a5 = x[2];
 
     vector<double> result;
-    for (double t=0.0; t<max_time+0.001; t+=time_inc) 
+    for (double t=time_inc; t<max_time+0.001; t+=time_inc) 
     {
         double t2 = t * t;
         double t3 = t * t2;
@@ -381,12 +387,24 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
     double car_in_front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
     double car_in_front_adj   = DISTANCE_ADJUSTMENT * (car_in_front_dist - DISTANCE_THRESHOLD);
+    if (car_in_front_adj > 5.0)
+    {
+        car_in_front_adj = 5.0;
+    }
+    if (car_in_front_adj < -5.0)
+    {
+        car_in_front_adj = -5.0;
+    }
     double speed_start        = telemetry_data.car_speed;
     if (speed_start > MAX_SPEED_M_S)
     {
         speed_start = MAX_SPEED_M_S;
     }
-    double speed_end          = speed_start + car_in_front_adj;
+    double speed_end = speed_start + car_in_front_adj;
+    if (speed_end > MAX_SPEED_M_S)
+    {
+        speed_end = MAX_SPEED_M_S;
+    }
 
 cout << "speed_start " << speed_start << endl;
 cout << "speed_end " << speed_end << endl << endl;
@@ -408,6 +426,8 @@ string calculateLowestCostAction(telemetry_t telemetry_data)
     double left_cost  = costOfLaneChangeLeft(telemetry_data);
     double keep_cost  = costOfStraightCourse(telemetry_data);
     double right_cost = costOfLaneChangeRight(telemetry_data);
+
+cout << "costs: " << left_cost << " - " << keep_cost << " - " << right_cost << endl;
 
     map<double, string> cost_map = { {left_cost,  "left"},
                                      {keep_cost,  "keep"},
@@ -605,7 +625,7 @@ int main() {
                     }
 
                     // Nearing the end of driven path
-                    else if (previous_path_x.size() < 5)
+                    else if (previous_path_x.size() < 15)
                     {
                         vector<other_car_t> other_cars = {};
                         for (int i=0; i<sensor_fusion.size(); i++)
@@ -625,7 +645,6 @@ int main() {
                         double car_speed = save_state.last_speed;	
                         int pos_l = convertDToLane(car_d);
                         telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
-
                         string action = calculateLowestCostAction(telemetry_data);
                         if (action == "left")
                         {
