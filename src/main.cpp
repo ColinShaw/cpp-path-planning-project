@@ -10,7 +10,6 @@
 #include "Eigen-3.3/Eigen/Dense"
 #include "json.hpp"
 #include "spline.h"
-#include "structs.h"
 
 
 #define MAP_FILE                "../data/highway_map.csv"
@@ -31,6 +30,53 @@ using Eigen::VectorXd;
 using std::vector;
 using std::map;
 using json = nlohmann::json;
+
+
+// Type for saving state between evaluation cycles with the simulator
+struct save_state_t
+{
+    double last_s;
+    double last_d;
+    double last_speed;
+};
+
+// Type for the data about the other cars
+struct other_car_t
+{
+    int    id;
+    int    car_l;
+    double car_s;
+    double car_speed;
+};
+
+// Telemetry type encapsulating the data we need for determining course
+struct telemetry_t 
+{
+    int    car_l;
+    double car_s;
+    double car_speed;
+    vector<other_car_t> other_cars; 
+};
+
+// Setpoint type for the controls we are returning
+struct setpoint_t
+{
+    double start_pos_s;
+    double start_vel_s;
+    double end_pos_s;
+    double end_vel_s;
+    int    start_pos_l;
+    int    end_pos_l;
+};
+
+// Type encapsulating x,y pairs and last s,d from jerk minimization
+struct jerk_return_t 
+{
+    vector<double> path_x;
+    vector<double> path_y;
+    double last_s;
+    double last_d;
+};
 
 
 constexpr double pi()    { return M_PI; }
@@ -375,7 +421,7 @@ string calculateLowestCostAction(telemetry_t telemetry_data)
 }
 
 // Compute minimum jerk path and convert to map coordinates
-vector<vector<double>> computeMinimumJerkMapPath(setpoint_t new_setpoints,
+jerk_return_t computeMinimumJerkMapPath(setpoint_t new_setpoints,
                                                  vector<double> map_waypoints_s,
                                                  vector<double> map_waypoints_x,
                                                  vector<double> map_waypoints_y)
@@ -413,10 +459,12 @@ vector<vector<double>> computeMinimumJerkMapPath(setpoint_t new_setpoints,
         next_x_vals.push_back(xy[0]);
         next_y_vals.push_back(xy[1]);
     }
-    vector<vector<double>> next_xy = {};
-    next_xy.push_back(next_x_vals);
-    next_xy.push_back(next_y_vals);
-    return next_xy;
+    jerk_return_t retval;
+    retval.path_x = next_x_vals;
+    retval.path_y = next_y_vals;
+    retval.last_s = next_s_vals[next_s_vals.size()-1];
+    retval.last_d = next_d_vals[next_d_vals.size()-1];
+    return retval;
 }
 
 int main() {
@@ -494,9 +542,11 @@ int main() {
     map_waypoints_dx = map_waypoints_dx_new;
     map_waypoints_dy = map_waypoints_dy_new;
 
+    save_state_t save_state;
+
     // Respond to simulator telemetry messages
     h.onMessage([&map_waypoints_x, &map_waypoints_y, &map_waypoints_s, 
-                 &map_waypoints_dx, &map_waypoints_dy]
+                 &map_waypoints_dx, &map_waypoints_dy, &save_state]
                 (uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) 
     {
         if (length && length > 2 && data[0] == '4' && data[1] == '2') 
@@ -520,84 +570,102 @@ int main() {
                     double end_path_d    = j[1]["end_path_d"];
                     auto sensor_fusion   = j[1]["sensor_fusion"];
 
-                    // Conditionally set the position to start the jerk minimizing path from
-                    double pos_s;
-                    double pos_d;
+                    // Some variables used here...
+                    json msgJson;
+                    setpoint_t new_setpoints;
+
+                    // First path
                     if (previous_path_x.size() == 0)
                     {
-                        pos_s = car_s;
-                        pos_d = car_d;
-                    }
-                    else
-                    {
-                        pos_s = end_path_s;
-                        pos_d = end_path_d;
-                    }
-
-                  
-                    // Build an other_car_t version of the sensor fusion data
-                    vector<other_car_t> other_cars = {};
-                    for (int i=0; i<sensor_fusion.size(); i++)
-                    {
-                        int id    = sensor_fusion[i][0];
-                        double s  = sensor_fusion[i][5];
-                        double d  = sensor_fusion[i][6];
-                        int l     = convertDToLane(d);
-                        double vx = sensor_fusion[i][3];
-                        double vy = sensor_fusion[i][4];
-                        double speed = sqrt(vx*vx + vy*vy);
-                        other_car_t oc = {id, l, s, speed};
-                        other_cars.push_back(oc); 
-                    }
-
-                    // Make the whole telemetry package available to the methods above for cost
-                    int pos_l = convertDToLane(pos_d);
-                    telemetry_t telemetry_data = {pos_l, pos_s, car_speed, other_cars};
-
-
-                    // Find lowest cost action
-                    string action = calculateLowestCostAction(telemetry_data);
-
-                    // Determine an action based on the chosen action
-                    setpoint_t new_setpoints;
-                    if (action == "left")
-                    {
-                        new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
-                    }
-                    else if (action == "keep")
-                    {
+                        vector<other_car_t> other_cars = {};
+                        for (int i=0; i<sensor_fusion.size(); i++)
+                        {
+                            int id    = sensor_fusion[i][0];
+                            double s  = sensor_fusion[i][5];
+                            double d  = sensor_fusion[i][6];
+                            int l     = convertDToLane(d);
+                            double vx = sensor_fusion[i][3];
+                            double vy = sensor_fusion[i][4];
+                            double speed = sqrt(vx*vx + vy*vy);
+                            other_car_t oc = {id, l, s, speed};
+                            other_cars.push_back(oc); 
+                        }
+                        int pos_l = convertDToLane(car_d);
+                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
                         new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
+                        jerk_return_t jerk = computeMinimumJerkMapPath(new_setpoints,
+                                                                       map_waypoints_s,
+                                                                       map_waypoints_x,
+                                                                       map_waypoints_y);
+                        save_state.last_s = jerk.last_s;
+                        save_state.last_d = jerk.last_d;
+                        save_state.last_speed = new_setpoints.end_vel_s;
+                        msgJson["next_x"] = jerk.path_x; 
+                        msgJson["next_y"] = jerk.path_y;
                     }
-                    else if (action == "right")
+
+                    // Nearing the end of driven path
+                    else if (previous_path_x.size() < 5)
                     {
-                        new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
+                        vector<other_car_t> other_cars = {};
+                        for (int i=0; i<sensor_fusion.size(); i++)
+                        {
+                            int id    = sensor_fusion[i][0];
+                            double s  = sensor_fusion[i][5];
+                            double d  = sensor_fusion[i][6];
+                            int l     = convertDToLane(d);
+                            double vx = sensor_fusion[i][3];
+                            double vy = sensor_fusion[i][4];
+                            double speed = sqrt(vx*vx + vy*vy);
+                            other_car_t oc = {id, l, s, speed};
+                            other_cars.push_back(oc); 
+                        }					
+                        double car_s = save_state.last_s;
+                        double car_d = save_state.last_d;
+                        double car_speed = save_state.last_speed;	
+                        int pos_l = convertDToLane(car_d);
+                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
+
+                        string action = calculateLowestCostAction(telemetry_data);
+                        if (action == "left")
+                        {
+                            new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
+                        }
+                        else if (action == "keep")
+                        {
+                            new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
+                        }
+                        else if (action == "right")
+                        {
+                            new_setpoints = determineNewRightCourseSetpoints(telemetry_data);
+                        }
+                        vector<double> path_x = previous_path_x;
+                        vector<double> path_y = previous_path_y;
+                        jerk_return_t jerk = computeMinimumJerkMapPath(new_setpoints,
+                                                                       map_waypoints_s,
+                                                                       map_waypoints_x,
+                                                                       map_waypoints_y);
+                        save_state.last_s = jerk.last_s;
+                        save_state.last_d = jerk.last_d;
+                        save_state.last_speed = new_setpoints.end_vel_s;
+                        for (int i=0; i<jerk.path_x.size(); i++)
+                        {
+                            path_x.push_back(jerk.path_x[i]);
+                            path_y.push_back(jerk.path_y[i]);
+                        }
+                        msgJson["next_x"] = path_x; 
+                        msgJson["next_y"] = path_y;
                     }
 
-                    // Compute path
-                    vector<vector<double>> path_xy = computeMinimumJerkMapPath(new_setpoints,
-                                                                               map_waypoints_s,
-                                                                               map_waypoints_x,
-                                                                               map_waypoints_y);
-
-cout << "previous size : " << previous_path_x.size() << endl;
-cout << "reported s,d  : " << car_s << ", " << car_d << endl;
-cout << "reported speed: " << car_speed << endl << endl;
-
-                    // Conditionally send new path to the simulator
-                    json msgJson;
-                    if (previous_path_x.size() < 2)
-                    {
-                        msgJson["next_x"] = path_xy[0]; 
-                        msgJson["next_y"] = path_xy[1];
-                    }
-                    else 
+                    // Just resend the rest of the path back to sim
+                    else
                     {
                         msgJson["next_x"] = previous_path_x; 
                         msgJson["next_y"] = previous_path_y;
                     }
+
                     auto msg = "42[\"control\","+ msgJson.dump()+"]";
                     ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
-
                 }
             } 
             else 
@@ -608,6 +676,7 @@ cout << "reported speed: " << car_speed << endl << endl;
         }
     });
 
+/*
     h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) 
     {
         const std::string s = "<h1>Hello world!</h1>";
@@ -620,6 +689,7 @@ cout << "reported speed: " << car_speed << endl << endl;
             res->end(nullptr, 0);
         }
     });
+*/
 
     int port = 4567;
     if (h.listen(port)) 

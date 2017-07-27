@@ -56,7 +56,7 @@ and observing the coordinates processed by the simulator.  The goal is that we n
 last coordinate from the first frame as first point of the next frame, though we only need to
 send the simulator the second through final points in the second frame.  In order to effect 
 this, we need to be able to retain state spanning entrance to the event loop.  To do this, I 
-simply created the `save_state_t` type (line `xyz` of `structs.h`).  This is used in the code
+simply created the `save_state_t` type (line `xyz` of `main.cpp`).  This is used in the code
 of `main.cpp` at lines `xyz` and `xyz`, having to do with initialization and continuity of the
 trajectory frames.
 
@@ -67,8 +67,8 @@ trajectory frames.
 For the sake of simplicity, a few types were created to help convey data about the telemetry
 data for the car we are controlling as well as the sensor fusion data from the other cars.  What
 is needed is simply a containing structure for the car and fusion data.  This is simply called
-`telemetry_t` as seen on line `xyz` of `structs.h`.  This contains a vector of `other_car_t` 
-data (line `xyz` of `structs.h`).  One thing to note is that these structures do not contain 
+`telemetry_t` as seen on line `xyz` of `main.cpp`.  This contains a vector of `other_car_t` 
+data (line `xyz` of `main.cpp`).  One thing to note is that these structures do not contain 
 all of the data presented in the telemetry from the simulator.  The `telemetry_t` stucture is 
 constructed on line `xyz` of `main.cpp`, and is used extensively when dispatching to computational
 units after determining the best action (for example line `xyz` of the `costOfLaneChangeRight` 
@@ -76,7 +76,7 @@ function in `main.cpp`).
 
 After a decision is made regarding the next action, the controlling variables must be determined
 and conveyed to the minimum jerk trajectory function.  The natural way to encapsulate this is
-also with a struct, in this case `setpoint_t` seen on line `xyz` of `structs.h`.  Here we are 
+also with a struct, in this case `setpoint_t` seen on line `xyz` of `main.cpp`.  Here we are 
 again making assumptions about the data that we will be using and assigning these values 
 accordingly.  In both this case and the telemetry structures, we are using the lane lines as 
 integers rather than explicitly using the Frenet d-coordinate for simplicity.  This makes the 
@@ -193,6 +193,14 @@ minimal abstraction and is very direct.  One reason for this is the general
 simplicity of the control flow.  There really is not a lot of value in abstracting
 aspects of this project other than organization.  What I did do was clean up the
 initial code given to us, remove aspects that were unused or unnecessay, and 
-adhere to a clean style for what I added.  I did, of course, pull out the types
-to `structs.h` so that they were a more clear reference.
+adhere to a clean style for what I added.  
+
+Between starting the project and finishing the project, I have tried out a 
+variety of different organizations, but it is a size of project where some of 
+the abstractions, like pulling minimum jerk functionality into a separate class,
+mostly serves oganizationally to reduce file size, and doesn't really help
+the readability and maintainability of the project.  It simply makes it easier
+to find the aspects of the code that you don't know where it is or how it 
+relates.  That said, I consciously chose to develop it as a large single file
+project.  Meh.  It works.
 
