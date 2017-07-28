@@ -19,7 +19,8 @@
 #define PATH_PLAN_SECONDS       2.5
 #define PATH_PLAN_INCREMENT     0.02
 
-#define LANE_CHANGE_COST_SIDES  0.6
+#define LANE_CHANGE_COST_SIDE_F 0.6
+#define LANE_CHANGE_COST_SIDE_R 0.5
 #define LANE_CHANGE_COST_AHEAD  1.0
 
 #define MAX_SPEED_M_S           19.5
@@ -31,7 +32,7 @@
 
 #define MAX_COST                1000.0
 
-#define MIN_TRACKING_CHANGE     -5.0
+#define MIN_TRACKING_CHANGE    -5.0
 #define MAX_TRACKING_CHANGE     5.0
 
 #define MAX_TRACK_S             6945.554
@@ -330,7 +331,7 @@ double costOfLaneChangeLeft(telemetry_t telemetry_data)
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_COST_SIDES * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_SIDE_F / front_dist + LANE_CHANGE_COST_SIDE_R / behind_dist;
     }
     return MAX_COST;
 }
@@ -346,7 +347,7 @@ double costOfLaneChangeRight(telemetry_t telemetry_data)
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_COST_SIDES * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_SIDE_F / front_dist + LANE_CHANGE_COST_SIDE_R / behind_dist;
     }
     return MAX_COST;
 }
