@@ -54,11 +54,12 @@ for transients in driving speed.
 The way that this is solved is being very specific about what the last coordinate we have sent 
 and observing the coordinates processed by the simulator.  The goal is that we need to use the 
 last coordinate from the first frame as first point of the next frame, though we only need to
-send the simulator the second through final points in the second frame.  In order to effect 
-this, we need to be able to retain state spanning entrance to the event loop.  To do this, I 
-simply created the `save_state_t` type (line `xyz` of `main.cpp`).  This is used in the code
-of `main.cpp` at lines `xyz` and `xyz`, having to do with initialization and continuity of the
-trajectory frames.
+send the simulator the second through final points in the second frame.  The way I achieved this
+was to simply detect when the points we have visited by looking at the size of the previous path
+given to us by the simulator.  If there is a lot left, I just let it keep working through what
+it has, whereas if it is below some size limit I append a new planned path segment to it.  The
+logic for this can be found starting at line `xyz` of `main.cpp`.  The effect of this is to 
+keep the previous path buffers full and with appropriate points that make smooth paths.
 
 
 
@@ -141,6 +142,18 @@ The simplest solution to this problem, since the track curves gently, is to simp
 estimate the curvature and diminish the maximum speed based on this figure.  The 
 expected result is that the travel speed does not depend on the road curvatuve.  This
 can be seen in the code in the `XYZ` function on line `xyz` of `main.cpp`.
+
+
+
+## Making the Path Cycle
+
+One goal of course is to be able to associate points beyond the end of the 
+track with the equivalent point at the beginning of track.  This is actually
+rather easy to accomplish in Frenet coordinates by simply taking `fmod` of the
+total track length in s coordinates.  To simplify the code and not require
+specifically wrapping the data, I appending the first line of the `highway_map.csv` 
+file to the end, with the s coordinate of zero replaced with the track length 
+(6945.554), so that it would wrap as expected.
 
 
 
@@ -232,6 +245,7 @@ the project:
  * Speed compensation for road curvature
  * Tuning the minimum jerk path planner
  * Tuning the costs for the action planner
+ * Cycling back at end of track
 
 Most of these issues have been discussed above.  The waypoint smoothing was
 essential because of the sudden acceleration and jerk encountered mapping
@@ -247,7 +261,9 @@ is that allows for smooth enough acceleration and jerk to meet the project
 requirement while also being able to competently weave in the traffic.  This
 relates to the decisions required for tuning the costs for the action planner, 
 which also involved picking a reasonable collection of states that would 
-admit a decent solution.
+admit a decent solution.  Cycling at the end of the track is no problem 
+if `fmod` is used and the map waypoint data extended to associate the last 
+point with the first.
 
 
 

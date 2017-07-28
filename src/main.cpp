@@ -32,6 +32,8 @@
 #define MIN_TRACKING_CHANGE     -5.0
 #define MAX_TRACKING_CHANGE     5.0
 
+#define MAX_TRACK_S             6945.554
+
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -474,7 +476,7 @@ jerk_return_t computeMinimumJerkMapPath(setpoint_t new_setpoints,
     vector<double> next_y_vals = {};
     for (int i=0; i<next_s_vals.size(); i++)
     {
-        vector<double> xy = getXY(next_s_vals[i],
+        vector<double> xy = getXY(fmod(next_s_vals[i], MAX_TRACK_S),
                                   next_d_vals[i],
                                   map_waypoints_s,
                                   map_waypoints_x,
@@ -523,17 +525,6 @@ int main() {
     }
 
     // Spline interpolate the map waypoints
-    map_waypoints_x.push_back(map_waypoints_x[0]);
-    map_waypoints_y.push_back(map_waypoints_y[0]);
-    map_waypoints_s.push_back(map_waypoints_s[0]);
-    map_waypoints_dx.push_back(map_waypoints_dx[0]);
-    map_waypoints_dy.push_back(map_waypoints_dy[0]);
-    map_waypoints_x.push_back(map_waypoints_x[1]);
-    map_waypoints_y.push_back(map_waypoints_y[1]);
-    map_waypoints_s.push_back(map_waypoints_s[1]);
-    map_waypoints_dx.push_back(map_waypoints_dx[1]);
-    map_waypoints_dy.push_back(map_waypoints_dy[1]);
-
     vector<double> waypoint_spline_t = {};
     int map_waypoints_size = map_waypoints_x.size();
     for (int i=0; i<map_waypoints_size; i++)
