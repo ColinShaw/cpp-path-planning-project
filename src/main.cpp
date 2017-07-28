@@ -24,7 +24,7 @@
 #define MAX_SPEED_M_S           19.5
 
 #define SPEED_INCREMENT         0.0
-#define LANE_CHANGE_CONSTANT    0.95
+#define LANE_CHANGE_CONSTANT    1.0 //0.95
 
 #define DISTANCE_ADJUSTMENT     2.5
 #define DISTANCE_THRESHOLD      20.0
@@ -520,8 +520,18 @@ int main() {
     }
 
     // Spline interpolate the map waypoints
-    vector<double> waypoint_spline_t = {};
+    map_waypoints_x.push_back(map_waypoints_x[0]);
+    map_waypoints_y.push_back(map_waypoints_y[0]);
+    map_waypoints_s.push_back(map_waypoints_s[0]);
+    map_waypoints_dx.push_back(map_waypoints_dx[0]);
+    map_waypoints_dy.push_back(map_waypoints_dy[0]);
+    map_waypoints_x.push_back(map_waypoints_x[1]);
+    map_waypoints_y.push_back(map_waypoints_y[1]);
+    map_waypoints_s.push_back(map_waypoints_s[1]);
+    map_waypoints_dx.push_back(map_waypoints_dx[1]);
+    map_waypoints_dy.push_back(map_waypoints_dy[1]);
 
+    vector<double> waypoint_spline_t = {};
     int map_waypoints_size = map_waypoints_x.size();
     for (int i=0; i<map_waypoints_size; i++)
     {
@@ -694,21 +704,6 @@ int main() {
             }
         }
     });
-
-/*
-    h.onHttpRequest([](uWS::HttpResponse *res, uWS::HttpRequest req, char *data, size_t, size_t) 
-    {
-        const std::string s = "<h1>Hello world!</h1>";
-        if (req.getUrl().valueLength == 1) 
-        {
-            res->end(s.data(), s.length());
-        } 
-        else 
-        {
-            res->end(nullptr, 0);
-        }
-    });
-*/
 
     int port = 4567;
     if (h.listen(port)) 
