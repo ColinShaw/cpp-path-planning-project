@@ -30,7 +30,7 @@ simply constrain the Frenet d-coordinate and sequentially increment the Frenet s
 drive the car, it will have too much acceleration and jerk at the waypoints.  There are a variety 
 of ways to accommodate this; the way I decided to use involved interpolating the waypoints so 
 that the entire Frenet frame could be assumed to be smooth.  Since the car is generally 
-targetting the speed limit, which is roughly 25 m/s, we would want the interpolated values to be 
+targetting the speed limit, which is roughly 22 m/s, we would want the interpolated values to be 
 somewhat more fine than this.  I used an interpolation of 10,000 waypoints, which is a bit more 
 fine than one waypoint per meter.  The curve is not always centered in the lane, an artifact of 
 the interpolation, but it is more than adequate from the perspective of staying in the lane.  Now
@@ -128,7 +128,23 @@ polynomial.  The jerk minimizing trajectory generation is performed in the
 
 
 
-## Computing Discreet Moves 
+## Compensating Speed During Turns
+
+The way I am modeling the minimum jerk trajectory works well, but did not provide 
+consistency in speed between straight road stretches and curved road stretches.  This
+is due to the curvature of the road and the mapping from Frenet coordinates to 
+map coordinates.  The ramification of this without compensation is that in order to
+meet the objective of not going over the speed limit in the turns, the straight
+car speed is artificially low.  
+
+The simplest solution to this problem, since the track curves gently, is to simply 
+estimate the curvature and diminish the maximum speed based on this figure.  The 
+expected result is that the travel speed does not depend on the road curvatuve.  This
+can be seen in the code in the `XYZ` function on line `xyz` of `main.cpp`.
+
+
+
+## Computing Control Moves 
 
 The telemetry data (described above) is used in computing what the next logical move
 for the car to make is.  Given the relatively low variance in speeds of the other
@@ -156,20 +172,18 @@ One additional challenge exists for the case of going straight, which is the nee
 to maximize speed with the constraints of the speed limit and not running into the
 car that is directly ahead of us.  The case could arise of not being able to change 
 lanes, but the car in front of us is going slow, so it is necessary to monitor the 
-speed of the car and estimate the speed.  To accomplish this we again use the 
-`save_state_t` struct as a container for the prior car `id` and Frenet
-s-coordinate.  The code for this can be found in the `estimateSpeedOfCarInFront`
-function on line `xyz` of `main.cpp`.
+car in front of us and adjust our speed.  The way I chose to accomplish this was
+to simply modify the planned path final speed proportional to a measure of 
+distance from the car nearest in front of me.  This is pretty simplistic (though
+seems to mimic the behavior of a lot of human drivers), but works quite 
+effectively without requiring prior state of relevant cars to be retained.  This
+can be seen in the code in the `XYZ` function on line `xyz` of `main.cpp`.
 
 Once the respective costs have been computed and the lowest cost determined, 
-the path constraints are created to send to the minimal jerk trajectory code.  An
+the path constraints are created, including changes in speed to reflect the speed of the 
+car in front of us, the constraints are sent to the minimal jerk trajectory code.  An
 example of this for the straight path case can been seen in the 
 `determineNewLeftCourseSetpoints` function on line `xyz` of `main.cpp`.
-
-
-
-## Performance Review
-
 
 
 
@@ -181,8 +195,59 @@ Here is a video of the car driving in action:
 
 
 
+## Performance Review
+
+As can be seen in the video, the car drives around the track without issue. The
+driving is smooth, it doesn't violate the requirements, and it makes it around
+the track generally driving slightly under the speed limit unless it has to
+slow down for a car in front.  Given the time horizon of the moves, which is
+selected for smooth transitions that meet the acceleration and jerk objectives,
+the path that is planned for lane changes is not all that aggressive.  
+
+I did notice there are a few surprises that can arise where the the car does not 
+go around the track without incident.  In a couple runs, a car from another lane 
+on our side of the road swerved into my lane and caused a collision.  I don't 
+think there is a passing way of dealing with this.  I cannot detect that and 
+react without violating the speed limit, acceleration or jerk, or having 
+the collision.  As well, a car from the other direction has swerved into the 
+lane and collided with me.  In this case we don't even have the sensor fusion
+data and clearly cannot do much about it.  
+
+There seems to be a small section of track about 2/3 of the way through where 
+there is a slight disconnect between the simulator's perceived location of the
+car and the visible map.  On occassion the car can visibly be well within the
+(rightmost) lane and be flagged as not being in the lane.  Since all of the
+detection is done on the simulator side, I do not believe there is anything
+I can do to accommodate this.  
+
+
+
 ## Challenges Encountered
 
+Below is an enumeration of the biggest challenges faced with implementing
+the project:
+
+ * Smooth waypoints
+ * Smooth simulator interface
+ * Speed compensation for road curvature
+ * Tuning the minimum jerk path planner
+ * Tuning the costs for the action planner
+
+Most of these issues have been discussed above.  The waypoint smoothing was
+essential because of the sudden acceleration and jerk encountered mapping
+a minimum jerk trajectory through the supplied waypoints.  Obviously the 
+interface with the simulator needs to be making predictions having continuity
+with the existing predictions, which requires some finesse with asynchronous
+entry.  It may not have been a big deal, but I was not okay with the issue
+of the speed changing on straight versus curved road sections due to the 
+mapping of Frenet coordinates to map coordinates.  The main goal of the 
+minimizing acceleration and jerk while being able to change lanes required
+some tuning; decisions had to be made with regard to what the time horizon
+is that allows for smooth enough acceleration and jerk to meet the project
+requirement while also being able to competently weave in the traffic.  This
+relates to the decisions required for tuning the costs for the action planner, 
+which also involved picking a reasonable collection of states that would 
+admit a decent solution.
 
 
 
@@ -193,7 +258,8 @@ minimal abstraction and is very direct.  One reason for this is the general
 simplicity of the control flow.  There really is not a lot of value in abstracting
 aspects of this project other than organization.  What I did do was clean up the
 initial code given to us, remove aspects that were unused or unnecessay, and 
-adhere to a clean style for what I added.  
+adhere to a clean style for what I added.  Yes, I know I do not have idiomatic
+C++ styling, but I really like aligned `=` for ease of seeing what things are.
 
 Between starting the project and finishing the project, I have tried out a 
 variety of different organizations, but it is a size of project where some of 
@@ -202,5 +268,5 @@ mostly serves oganizationally to reduce file size, and doesn't really help
 the readability and maintainability of the project.  It simply makes it easier
 to find the aspects of the code that you don't know where it is or how it 
 relates.  That said, I consciously chose to develop it as a large single file
-project.  Meh.  It works.
+project.  Meh, it works.
 

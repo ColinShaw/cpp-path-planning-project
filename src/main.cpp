@@ -19,15 +19,18 @@
 #define PATH_PLAN_SECONDS       2.5
 #define PATH_PLAN_INCREMENT     0.02
 
-#define LANE_CHANGE_COST_CONST  0.6
+#define LANE_CHANGE_COST_SIDES  0.6
+#define LANE_CHANGE_COST_AHEAD  1.0
 
 #define MAX_SPEED_M_S           19.5
 
-#define SPEED_INCREMENT         0.0
-#define LANE_CHANGE_CONSTANT    1.0 //0.95
-
 #define DISTANCE_ADJUSTMENT     2.5
 #define DISTANCE_THRESHOLD      20.0
+
+#define MAX_COST                1000.0
+
+#define MIN_TRACKING_CHANGE     -5.0
+#define MAX_TRACKING_CHANGE     5.0
 
 
 using namespace std;
@@ -314,15 +317,15 @@ double costOfLaneChangeLeft(telemetry_t telemetry_data)
 {
     if (telemetry_data.car_l == 1)
     {
-        return 1000.0; 
+        return MAX_COST; 
     }
     double front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l-1);
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l-1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_COST_CONST * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_SIDES * (1.0 / front_dist + 1.0 / behind_dist);
     }
-    return 1000.0;
+    return MAX_COST;
 }
 
 // Cost of a change of lane to the right
@@ -330,15 +333,15 @@ double costOfLaneChangeRight(telemetry_t telemetry_data)
 {
     if (telemetry_data.car_l == 3)
     {
-        return 1000.0;
+        return MAX_COST;
     }
     double front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l+1);
     double behind_dist = distanceToClosestCarBehind(telemetry_data, telemetry_data.car_l+1);
     if (front_dist != 0.0 && behind_dist != 0.0)
     {
-        return LANE_CHANGE_COST_CONST * (1.0 / front_dist + 1.0 / behind_dist);
+        return LANE_CHANGE_COST_SIDES * (1.0 / front_dist + 1.0 / behind_dist);
     }
-    return 1000.0;
+    return MAX_COST;
 }
 
 // Cost of maintaining straight course
@@ -347,9 +350,9 @@ double costOfStraightCourse(telemetry_t telemetry_data)
     double front_dist = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
     if (front_dist != 0.0)
     {
-        return LANE_CHANGE_CONSTANT * 1.0 / front_dist;
+        return LANE_CHANGE_COST_AHEAD / front_dist;
     }
-    return 1000.0;
+    return MAX_COST;
 }
 
 // Determine new setpoints whilst going on the left course 
@@ -359,8 +362,8 @@ setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + LANE_CHANGE_CONSTANT * PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed - SPEED_INCREMENT,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed,
         telemetry_data.car_l,
         telemetry_data.car_l - 1 
     };
@@ -374,8 +377,8 @@ setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + LANE_CHANGE_CONSTANT * PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed - SPEED_INCREMENT,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
+        telemetry_data.car_speed,
         telemetry_data.car_l,
         telemetry_data.car_l + 1 
     };
@@ -387,13 +390,13 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
 {
     double car_in_front_dist  = distanceToClosestCarInFront(telemetry_data, telemetry_data.car_l);
     double car_in_front_adj   = DISTANCE_ADJUSTMENT * (car_in_front_dist - DISTANCE_THRESHOLD);
-    if (car_in_front_adj > 5.0)
+    if (car_in_front_adj > MAX_TRACKING_CHANGE)
     {
-        car_in_front_adj = 5.0;
+        car_in_front_adj = MAX_TRACKING_CHANGE;
     }
-    if (car_in_front_adj < -5.0)
+    if (car_in_front_adj < MIN_TRACKING_CHANGE)
     {
-        car_in_front_adj = -5.0;
+        car_in_front_adj = MIN_TRACKING_CHANGE;
     }
     double speed_start        = telemetry_data.car_speed;
     if (speed_start > MAX_SPEED_M_S)
@@ -442,9 +445,9 @@ cout << "costs: " << left_cost << " - " << keep_cost << " - " << right_cost << e
 
 // Compute minimum jerk path and convert to map coordinates
 jerk_return_t computeMinimumJerkMapPath(setpoint_t new_setpoints,
-                                                 vector<double> map_waypoints_s,
-                                                 vector<double> map_waypoints_x,
-                                                 vector<double> map_waypoints_y)
+                                        vector<double> map_waypoints_s,
+                                        vector<double> map_waypoints_x,
+                                        vector<double> map_waypoints_y)
 {
     // Conditions for minimum jerk in s (zero start/end acceleration) 
     double start_pos_s = new_setpoints.start_pos_s; 
@@ -610,28 +613,28 @@ int main() {
                         vector<other_car_t> other_cars = {};
                         for (int i=0; i<sensor_fusion.size(); i++)
                         {
-                            int id    = sensor_fusion[i][0];
-                            double s  = sensor_fusion[i][5];
-                            double d  = sensor_fusion[i][6];
-                            int l     = convertDToLane(d);
-                            double vx = sensor_fusion[i][3];
-                            double vy = sensor_fusion[i][4];
-                            double speed = sqrt(vx*vx + vy*vy);
+                            int id         = sensor_fusion[i][0];
+                            double s       = sensor_fusion[i][5];
+                            double d       = sensor_fusion[i][6];
+                            int l          = convertDToLane(d);
+                            double vx      = sensor_fusion[i][3];
+                            double vy      = sensor_fusion[i][4];
+                            double speed   = sqrt(vx*vx + vy*vy);
                             other_car_t oc = {id, l, s, speed};
                             other_cars.push_back(oc); 
                         }
                         int pos_l = convertDToLane(car_d);
                         telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
-                        new_setpoints = determineNewStraightCourseSetpoints(telemetry_data);
-                        jerk_return_t jerk = computeMinimumJerkMapPath(new_setpoints,
-                                                                       map_waypoints_s,
-                                                                       map_waypoints_x,
-                                                                       map_waypoints_y);
-                        save_state.last_s = jerk.last_s;
-                        save_state.last_d = jerk.last_d;
+                        new_setpoints              = determineNewStraightCourseSetpoints(telemetry_data);
+                        jerk_return_t jerk         = computeMinimumJerkMapPath(new_setpoints,
+                                                                               map_waypoints_s,
+                                                                               map_waypoints_x,
+                                                                               map_waypoints_y);
+                        save_state.last_s     = jerk.last_s;
+                        save_state.last_d     = jerk.last_d;
                         save_state.last_speed = new_setpoints.end_vel_s;
-                        msgJson["next_x"] = jerk.path_x; 
-                        msgJson["next_y"] = jerk.path_y;
+                        msgJson["next_x"]     = jerk.path_x; 
+                        msgJson["next_y"]     = jerk.path_y;
                     }
 
                     // Nearing the end of driven path
@@ -640,22 +643,22 @@ int main() {
                         vector<other_car_t> other_cars = {};
                         for (int i=0; i<sensor_fusion.size(); i++)
                         {
-                            int id    = sensor_fusion[i][0];
-                            double s  = sensor_fusion[i][5];
-                            double d  = sensor_fusion[i][6];
-                            int l     = convertDToLane(d);
-                            double vx = sensor_fusion[i][3];
-                            double vy = sensor_fusion[i][4];
-                            double speed = sqrt(vx*vx + vy*vy);
+                            int id         = sensor_fusion[i][0];
+                            double s       = sensor_fusion[i][5];
+                            double d       = sensor_fusion[i][6];
+                            int l          = convertDToLane(d);
+                            double vx      = sensor_fusion[i][3];
+                            double vy      = sensor_fusion[i][4];
+                            double speed   = sqrt(vx*vx + vy*vy);
                             other_car_t oc = {id, l, s, speed};
                             other_cars.push_back(oc); 
                         }					
-                        double car_s = save_state.last_s;
-                        double car_d = save_state.last_d;
-                        double car_speed = save_state.last_speed;	
-                        int pos_l = convertDToLane(car_d);
+                        double car_s               = save_state.last_s;
+                        double car_d               = save_state.last_d;
+                        double car_speed           = save_state.last_speed;	
+                        int pos_l                  = convertDToLane(car_d);
                         telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
-                        string action = calculateLowestCostAction(telemetry_data);
+                        string action              = calculateLowestCostAction(telemetry_data);
                         if (action == "left")
                         {
                             new_setpoints = determineNewLeftCourseSetpoints(telemetry_data);
@@ -670,12 +673,12 @@ int main() {
                         }
                         vector<double> path_x = previous_path_x;
                         vector<double> path_y = previous_path_y;
-                        jerk_return_t jerk = computeMinimumJerkMapPath(new_setpoints,
-                                                                       map_waypoints_s,
-                                                                       map_waypoints_x,
-                                                                       map_waypoints_y);
-                        save_state.last_s = jerk.last_s;
-                        save_state.last_d = jerk.last_d;
+                        jerk_return_t jerk    = computeMinimumJerkMapPath(new_setpoints,
+                                                                          map_waypoints_s,
+                                                                          map_waypoints_x,
+                                                                          map_waypoints_y);
+                        save_state.last_s     = jerk.last_s;
+                        save_state.last_d     = jerk.last_d;
                         save_state.last_speed = new_setpoints.end_vel_s;
                         for (int i=0; i<jerk.path_x.size(); i++)
                         {
