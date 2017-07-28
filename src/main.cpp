@@ -27,6 +27,8 @@
 #define DISTANCE_ADJUSTMENT     2.5
 #define DISTANCE_THRESHOLD      20.0
 
+#define HEADING_DIFF_SCALE      5.0
+
 #define MAX_COST                1000.0
 
 #define MIN_TRACKING_CHANGE     -5.0
@@ -49,6 +51,8 @@ struct save_state_t
     double last_s;
     double last_d;
     double last_speed;
+    double last_heading;
+    double heading_diff;
 };
 
 // Type for the data about the other cars
@@ -66,6 +70,7 @@ struct telemetry_t
     int    car_l;
     double car_s;
     double car_speed;
+    double heading_diff;
     vector<other_car_t> other_cars; 
 };
 
@@ -361,11 +366,12 @@ double costOfStraightCourse(telemetry_t telemetry_data)
 setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 {
     // Lane shift to the left
+    double speed_end = telemetry_data.car_speed - HEADING_DIFF_SCALE * telemetry_data.heading_diff;
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * 0.5 * (telemetry_data.car_speed + speed_end),
+        speed_end,
         telemetry_data.car_l,
         telemetry_data.car_l - 1 
     };
@@ -376,11 +382,12 @@ setpoint_t determineNewLeftCourseSetpoints(telemetry_t telemetry_data)
 setpoint_t determineNewRightCourseSetpoints(telemetry_t telemetry_data)
 {
     // Lane shift to the right
+    double speed_end = telemetry_data.car_speed - HEADING_DIFF_SCALE * telemetry_data.heading_diff;
     setpoint_t retval = {
         telemetry_data.car_s,
         telemetry_data.car_speed,
-        telemetry_data.car_s + PATH_PLAN_SECONDS * telemetry_data.car_speed,
-        telemetry_data.car_speed,
+        telemetry_data.car_s + PATH_PLAN_SECONDS * 0.5 * (telemetry_data.car_speed + speed_end),
+        speed_end,
         telemetry_data.car_l,
         telemetry_data.car_l + 1 
     };
@@ -410,9 +417,11 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
     {
         speed_end = MAX_SPEED_M_S;
     }
+    speed_end -= HEADING_DIFF_SCALE * telemetry_data.heading_diff;
 
 cout << "speed_start " << speed_start << endl;
-cout << "speed_end " << speed_end << endl << endl;
+cout << "speed_end " << speed_end << endl;
+cout << "adj " << HEADING_DIFF_SCALE * telemetry_data.heading_diff << endl << endl;
 
     setpoint_t retval = {
         telemetry_data.car_s,
@@ -431,8 +440,7 @@ string calculateLowestCostAction(telemetry_t telemetry_data)
     double left_cost  = costOfLaneChangeLeft(telemetry_data);
     double keep_cost  = costOfStraightCourse(telemetry_data);
     double right_cost = costOfLaneChangeRight(telemetry_data);
-
-cout << "costs: " << left_cost << " - " << keep_cost << " - " << right_cost << endl;
+    cout << "costs: " << left_cost << " - " << keep_cost << " - " << right_cost << endl;
 
     map<double, string> cost_map = { {left_cost,  "left"},
                                      {keep_cost,  "keep"},
@@ -615,17 +623,23 @@ int main() {
                             other_cars.push_back(oc); 
                         }
                         int pos_l = convertDToLane(car_d);
-                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
+                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, 0.0, other_cars};
                         new_setpoints              = determineNewStraightCourseSetpoints(telemetry_data);
                         jerk_return_t jerk         = computeMinimumJerkMapPath(new_setpoints,
                                                                                map_waypoints_s,
                                                                                map_waypoints_x,
                                                                                map_waypoints_y);
-                        save_state.last_s     = jerk.last_s;
-                        save_state.last_d     = jerk.last_d;
-                        save_state.last_speed = new_setpoints.end_vel_s;
-                        msgJson["next_x"]     = jerk.path_x; 
-                        msgJson["next_y"]     = jerk.path_y;
+                        save_state.last_s       = jerk.last_s;
+                        save_state.last_d       = jerk.last_d;
+                        save_state.last_speed   = new_setpoints.end_vel_s;
+                        int size                = jerk.path_x.size();
+                        double dx               = jerk.path_x[size-1] - jerk.path_y[size-2];
+                        double dy               = jerk.path_y[size-1] - jerk.path_y[size-2];
+                        double heading          = fabs(atan2(dy, dx));
+                        save_state.heading_diff = 0.0;
+                        save_state.last_heading = heading;
+                        msgJson["next_x"]       = jerk.path_x; 
+                        msgJson["next_y"]       = jerk.path_y;
                     }
 
                     // Nearing the end of driven path
@@ -647,8 +661,9 @@ int main() {
                         double car_s               = save_state.last_s;
                         double car_d               = save_state.last_d;
                         double car_speed           = save_state.last_speed;	
+                        double heading_diff        = save_state.heading_diff;
                         int pos_l                  = convertDToLane(car_d);
-                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, other_cars};
+                        telemetry_t telemetry_data = {pos_l, car_s, car_speed, heading_diff, other_cars};
                         string action              = calculateLowestCostAction(telemetry_data);
                         if (action == "left")
                         {
@@ -668,9 +683,15 @@ int main() {
                                                                           map_waypoints_s,
                                                                           map_waypoints_x,
                                                                           map_waypoints_y);
-                        save_state.last_s     = jerk.last_s;
-                        save_state.last_d     = jerk.last_d;
-                        save_state.last_speed = new_setpoints.end_vel_s;
+                        save_state.last_s       = jerk.last_s;
+                        save_state.last_d       = jerk.last_d;
+                        save_state.last_speed   = new_setpoints.end_vel_s;
+                        int size                = jerk.path_x.size();
+                        double dx               = jerk.path_x[size-1] - jerk.path_y[size-2];
+                        double dy               = jerk.path_y[size-1] - jerk.path_y[size-2];
+                        double heading          = fabs(atan2(dy, dx));
+                        save_state.heading_diff = heading - save_state.last_heading;
+                        save_state.last_heading = heading;
                         for (int i=0; i<jerk.path_x.size(); i++)
                         {
                             path_x.push_back(jerk.path_x[i]);

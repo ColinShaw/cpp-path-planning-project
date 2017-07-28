@@ -284,5 +284,5 @@ mostly serves oganizationally to reduce file size, and doesn't really help
 the readability and maintainability of the project.  It simply makes it easier
 to find the aspects of the code that you don't know where it is or how it 
 relates.  That said, I consciously chose to develop it as a large single file
-project.  Meh, it works.
+project. 
 
