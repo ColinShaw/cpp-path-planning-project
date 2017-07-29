@@ -1,9 +1,7 @@
 #include <fstream>
 #include <math.h>
 #include <uWS/uWS.h>
-#include <chrono>
 #include <iostream>
-#include <thread>
 #include <vector>
 #include <map>
 #include <utility>
@@ -415,8 +413,8 @@ setpoint_t determineNewStraightCourseSetpoints(telemetry_t telemetry_data)
         speed_end = MIN_SPEED_M_S;
     }
 
-cout << "speed_start " << speed_start << endl;
-cout << "speed_end " << speed_end << endl << endl;
+    cout << "speed_start " << speed_start << endl;
+    cout << "speed_end " << speed_end << endl << endl;
 
     setpoint_t retval = {
         telemetry_data.car_s,
@@ -435,6 +433,7 @@ string calculateLowestCostAction(telemetry_t telemetry_data)
     double left_cost  = costOfLaneChangeLeft(telemetry_data);
     double keep_cost  = costOfStraightCourse(telemetry_data);
     double right_cost = costOfLaneChangeRight(telemetry_data);
+
     cout << "costs: " << left_cost << " - " << keep_cost << " - " << right_cost << endl;
 
     map<double, string> cost_map = { {left_cost,  "left"},
