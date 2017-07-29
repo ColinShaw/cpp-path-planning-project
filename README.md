@@ -38,7 +38,7 @@ the interpolation in converting Frenet coordinates to map coordinates is based o
 that are more smoothly varying with lengths less than one meter.
 
 The code for this can be seen prior to the main execution loop, as the waypoint references are 
-passed to the event handler.  This code starts at line `xyz` of `main.cpp`.
+passed to the event handler.  This code starts at line `529` of `main.cpp`.
 
 
 
@@ -58,8 +58,11 @@ send the simulator the second through final points in the second frame.  The way
 was to simply detect when the points we have visited by looking at the size of the previous path
 given to us by the simulator.  If there is a lot left, I just let it keep working through what
 it has, whereas if it is below some size limit I append a new planned path segment to it.  The
-logic for this can be found starting at line `xyz` of `main.cpp`.  The effect of this is to 
+logic for this can be found starting at line `603` of `main.cpp`.  The effect of this is to 
 keep the previous path buffers full and with appropriate points that make smooth paths.
+
+The code makes use of the type `save_state_t` from line `46` of `main.cpp` for retaining the 
+state of the simulator from prior evaluations to make the action smooth.
 
 
 
@@ -68,16 +71,15 @@ keep the previous path buffers full and with appropriate points that make smooth
 For the sake of simplicity, a few types were created to help convey data about the telemetry
 data for the car we are controlling as well as the sensor fusion data from the other cars.  What
 is needed is simply a containing structure for the car and fusion data.  This is simply called
-`telemetry_t` as seen on line `xyz` of `main.cpp`.  This contains a vector of `other_car_t` 
-data (line `xyz` of `main.cpp`).  One thing to note is that these structures do not contain 
+`telemetry_t` as seen on line `63` of `main.cpp`.  This contains a vector of `other_car_t` 
+data (line `54` of `main.cpp`).  One thing to note is that these structures do not contain 
 all of the data presented in the telemetry from the simulator.  The `telemetry_t` stucture is 
-constructed on line `xyz` of `main.cpp`, and is used extensively when dispatching to computational
-units after determining the best action (for example line `xyz` of the `costOfLaneChangeRight` 
-function in `main.cpp`).
+used extensively when dispatching to computational units after determining the best action 
+(for example line `333` of the `costOfLaneChangeRight` function in `main.cpp`).
 
 After a decision is made regarding the next action, the controlling variables must be determined
 and conveyed to the minimum jerk trajectory function.  The natural way to encapsulate this is
-also with a struct, in this case `setpoint_t` seen on line `xyz` of `main.cpp`.  Here we are 
+also with a struct, in this case `setpoint_t` seen on line `72` of `main.cpp`.  Here we are 
 again making assumptions about the data that we will be using and assigning these values 
 accordingly.  In both this case and the telemetry structures, we are using the lane lines as 
 integers rather than explicitly using the Frenet d-coordinate for simplicity.  This makes the 
@@ -105,27 +107,19 @@ end of one frame must match the velocity at the beginning of the next frame, wit
 implications having to do with both acceleration and jerk.
 
 I tried some alternative models to the standard jerk minimizing 5th order polynomial 
-model given the added constraint of zero acceleration at the frame boundaries.  Below
-are the equations that govern this simplification as a 3rd order polynomial:
-
-![3rd order polynomial](/images/3rdOrder.png)
-
-... leading to four equations in four unknowns...
-
-![3rd order polynomial system](/images/3rdOrderSystem.png)
-
-Some example code can be found in the `/python` directory of the project.  The reason this
+model given the added constraint of zero acceleration at the frame boundaries.  Some 
+example code can be found in the `/python/` directory of the project.  The reason this
 seemed like a good idea was first because it made sense given the zero acceleration 
 constraint (until it proved not to minimize jerk), and also because it simplifies the 
 system of equations to such a degree that there would not need to be reliance on 
 a linear algebra library for computing coefficients.  This would simplify the code and
-reduce a dependency.
-
-However, it turns out that while the simpler model supports acceleration, it is not 
-sufficient to meet the requirements of a starting and ending velocity with zero acceleration 
-at the start and end.  That said, I ended up using the normal jerk minimizing 5th order 
-polynomial.  The jerk minimizing trajectory generation is performed in the 
-`minimum_jerk_path` function on line `xyz` of `main.cpp`.
+reduce a dependency.  However, it turns out that while the simpler model supports 
+acceleration, it is not sufficient to meet the requirements of a starting and ending 
+velocity with zero acceleration at the start and end.  That said, I ended up using 
+the normal jerk minimizing 5th order polynomial.  The jerk minimizing trajectory 
+generation is performed in the `computeMinimumJerk` function on line `202` of `main.cpp`
+as a function of Frenet coordinates, and realized in map coordinates in the function
+`computeMinimumJerkMapPath` on line `450` of `main.cpp`.
 
 
 
@@ -158,12 +152,12 @@ other cars in the lane.  To both as a cost, if the lane change is not appropriat
 the cost is simply set high.  The positions of the nearest car (in the candidate lane)
 in front of and behind our car are used to compute the cost for these cases.  An
 example of this code can be seen in the `costOfLaneChangeLeft` function on line
-`xyz` of `main.cpp`.
+`317` of `main.cpp`.
 
 The cost for going straight is computed in a similar fashion, though considering 
 only the car in the same lane that is directly in front of it.  This is because 
 the other cars are fairly good about not hitting you from behind.  This code can
-be seen in the `costOfStraightCourse` function on line `xyz` of `main.cpp`.
+be seen in the `costOfStraightCourse` function on line `349` of `main.cpp`.
 
 One additional challenge exists for the case of going straight, which is the need 
 to maximize speed with the constraints of the speed limit and not running into the
@@ -174,13 +168,15 @@ to simply modify the planned path final speed proportional to a measure of
 distance from the car nearest in front of me.  This is pretty simplistic (though
 seems to mimic the behavior of a lot of human drivers), but works quite 
 effectively without requiring prior state of relevant cars to be retained.  This
-can be seen in the code in the `XYZ` function on line `xyz` of `main.cpp`.
+can be seen in the code in the `determineNewStraightCourseSetpoints` function on 
+line `388` of `main.cpp`.
 
 Once the respective costs have been computed and the lowest cost determined, 
 the path constraints are created, including changes in speed to reflect the speed of the 
-car in front of us, the constraints are sent to the minimal jerk trajectory code.  An
-example of this for the straight path case can been seen in the 
-`determineNewLeftCourseSetpoints` function on line `xyz` of `main.cpp`.
+car in front of us, the constraints are sent to the minimal jerk trajectory code.  The
+type `setpoint_t` is used as a container for conveying setpoints for the minimum
+jerk trajectory from the selected action function.  The `setpoint_t` type can be
+seen on line `72` of `main.cpp`.
 
 
 
@@ -198,10 +194,10 @@ As can be seen in the video, the car drives around the track without issue. The
 driving is smooth, it doesn't violate the requirements, and it makes it around
 the track generally driving slightly under the speed limit unless it has to
 slow down for a car in front.  Given the time horizon of the moves, which is
-selected for smooth transitions that meet the acceleration and jerk objectives,
-the path that is planned for lane changes is not all that aggressive.  
+selected for smooth transitions that meet the acceleration and jerk objectives.  The
+path that is planned for lane changes is moderately aggressive.  
 
-I did notice there are a few surprises that can arise where the the car does not 
+I did notice there are a few surprises that can arise where the car does not 
 go around the track without incident.  In a couple runs, a car from another lane 
 on our side of the road swerved into my lane and caused a collision.  I don't 
 think there is a passing way of dealing with this.  I cannot detect that and 
@@ -215,9 +211,9 @@ there is a slight disconnect between the simulator's perceived location of the
 car and the visible map.  On occassion the car can visibly be well within the
 (rightmost) lane and be flagged as not being in the lane.  Since all of the
 detection is done on the simulator side, I do not believe there is anything
-I can do to accommodate this.  It seems that the simulator sometimes has 
+I can do to accommodate this.  It also seems that the simulator sometimes has 
 residual path stored if you press `esc` to reset the track.  This can lead
-to a shaky start, but if the simulator is restarted it does not exhibit
+to a shaky start, but if the simulator is completely restarted it does not exhibit
 this behavior.
 
 
@@ -234,14 +230,14 @@ the project:
  * Cycling back at end of track
 
 Most of these issues have been discussed above.  The waypoint smoothing was
-essential because of the sudden acceleration and jerk encountered mapping
+essential because of the sudden acceleration and jerk encountered when mapping
 a minimum jerk trajectory through the supplied waypoints.  Obviously the 
 interface with the simulator needs to be making predictions having continuity
 with the existing predictions, which requires some finesse with asynchronous
-entry.  The main goal of the minimizing acceleration and jerk while being 
+entry.  The main goal of minimizing acceleration and jerk while being 
 able to change lanes required some tuning; decisions had to be made with 
 regard to what the time horizon is that allows for smooth enough acceleration 
-and jerk to meet the project requirement while also being able to competently 
+and jerk to meet the project requirements while also being able to competently 
 weave in the traffic.  This relates to the decisions required for tuning 
 the costs for the action planner, which also involved picking a reasonable 
 collection of states that would admit a decent solution.  Cycling at the 
@@ -264,8 +260,6 @@ Between starting the project and finishing the project, I have tried out a
 variety of different organizations, but it is a size of project where some of 
 the abstractions, like pulling minimum jerk functionality into a separate class,
 mostly serves oganizationally to reduce file size, and doesn't really help
-the readability and maintainability of the project.  It simply makes it easier
-to find the aspects of the code that you don't know where it is or how it 
-relates.  That said, I consciously chose to develop it as a large single file
-project. 
+the readability and maintainability of the project.  That said, I consciously 
+chose to develop it as a large single file project. 
 
