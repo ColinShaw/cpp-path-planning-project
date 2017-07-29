@@ -23,10 +23,10 @@
 #define LANE_CHANGE_COST_SIDE_R 0.5
 #define LANE_CHANGE_COST_AHEAD  1.0
 
-#define MAX_SPEED_M_S           21.0
+#define MAX_SPEED_M_S           20.5
 #define MIN_SPEED_M_S           10.0
 
-#define DISTANCE_ADJUSTMENT     3.5
+#define DISTANCE_ADJUSTMENT     4.0
 #define DISTANCE_THRESHOLD      20.0
 
 #define MAX_COST                1000.0

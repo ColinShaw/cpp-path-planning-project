@@ -129,22 +129,6 @@ polynomial.  The jerk minimizing trajectory generation is performed in the
 
 
 
-## Compensating Speed During Turns
-
-The way I am modeling the minimum jerk trajectory works well, but did not provide 
-consistency in speed between straight road stretches and curved road stretches.  This
-is due to the curvature of the road and the mapping from Frenet coordinates to 
-map coordinates.  The ramification of this without compensation is that in order to
-meet the objective of not going over the speed limit in the turns, the straight
-car speed is artificially low.  
-
-The simplest solution to this problem, since the track curves gently, is to simply 
-estimate the curvature and diminish the maximum speed based on this figure.  The 
-expected result is that the travel speed does not depend on the road curvatuve.  This
-can be seen in the code in the `XYZ` function on line `xyz` of `main.cpp`.
-
-
-
 ## Making the Path Cycle
 
 One goal of course is to be able to associate points beyond the end of the 
@@ -204,7 +188,7 @@ example of this for the straight path case can been seen in the
 
 Here is a video of the car driving in action:
 
-    LINK TO VIDEO
+[![Project video](https://img.youtube.com/vi/TGtL9_YQTbo/0.jpg)](https://www.youtube.com/watch?v=https://youtu.be/TGtL9_YQTbo)
 
 
 
@@ -245,7 +229,6 @@ the project:
 
  * Smooth waypoints
  * Smooth simulator interface
- * Speed compensation for road curvature
  * Tuning the minimum jerk path planner
  * Tuning the costs for the action planner
  * Cycling back at end of track
@@ -255,18 +238,15 @@ essential because of the sudden acceleration and jerk encountered mapping
 a minimum jerk trajectory through the supplied waypoints.  Obviously the 
 interface with the simulator needs to be making predictions having continuity
 with the existing predictions, which requires some finesse with asynchronous
-entry.  It may not have been a big deal, but I was not okay with the issue
-of the speed changing on straight versus curved road sections due to the 
-mapping of Frenet coordinates to map coordinates.  The main goal of the 
-minimizing acceleration and jerk while being able to change lanes required
-some tuning; decisions had to be made with regard to what the time horizon
-is that allows for smooth enough acceleration and jerk to meet the project
-requirement while also being able to competently weave in the traffic.  This
-relates to the decisions required for tuning the costs for the action planner, 
-which also involved picking a reasonable collection of states that would 
-admit a decent solution.  Cycling at the end of the track is no problem 
-if `fmod` is used and the map waypoint data extended to associate the last 
-point with the first.
+entry.  The main goal of the minimizing acceleration and jerk while being 
+able to change lanes required some tuning; decisions had to be made with 
+regard to what the time horizon is that allows for smooth enough acceleration 
+and jerk to meet the project requirement while also being able to competently 
+weave in the traffic.  This relates to the decisions required for tuning 
+the costs for the action planner, which also involved picking a reasonable 
+collection of states that would admit a decent solution.  Cycling at the 
+end of the track is no problem if `fmod` is used and the map waypoint data 
+extended to associate the last point with the first.
 
 
 
