@@ -188,7 +188,7 @@ example of this for the straight path case can been seen in the
 
 Here is a video of the car driving in action:
 
-[![Project video](https://img.youtube.com/vi/TGtL9_YQTbo/0.jpg)](https://www.youtube.com/watch?v=https://youtu.be/TGtL9_YQTbo)
+[![Project video](https://img.youtube.com/vi/TGtL9_YQTbo/0.jpg)](https://www.youtube.com/watch?v=TGtL9_YQTbo)
 
 
 
