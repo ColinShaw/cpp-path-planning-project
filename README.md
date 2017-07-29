@@ -4,7 +4,7 @@ This is the path planning project for term 3 of Udacity's self-driving car progr
 original repo is available [here](https://github.com/udacity/CarND-Path-Planning-Project) and the 
 simulator is available [here](https://github.com/udacity/self-driving-car-sim/releases/tag/T3_v1.2).
 
-    IMAGE GOES HERE
+![Screenshot](/images/screenshot.png)
 
 
 
@@ -231,7 +231,10 @@ there is a slight disconnect between the simulator's perceived location of the
 car and the visible map.  On occassion the car can visibly be well within the
 (rightmost) lane and be flagged as not being in the lane.  Since all of the
 detection is done on the simulator side, I do not believe there is anything
-I can do to accommodate this.  
+I can do to accommodate this.  It seems that the simulator sometimes has 
+residual path stored if you press `esc` to reset the track.  This can lead
+to a shaky start, but if the simulator is restarted it does not exhibit
+this behavior.
 
 
 
